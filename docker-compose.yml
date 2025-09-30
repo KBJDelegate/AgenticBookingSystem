@@ -1,0 +1,59 @@
+version: '3.8'
+
+services:
+  # Backend API Service
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: kf-booking-backend
+    ports:
+      - "3001:3001"
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+    env_file:
+      - ./backend/.env
+    networks:
+      - booking-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Frontend React App
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: kf-booking-frontend
+    ports:
+      - "3000:80"
+    environment:
+      - VITE_API_URL=http://localhost:3001/api/v1
+    depends_on:
+      - backend
+    networks:
+      - booking-network
+    restart: unless-stopped
+
+  # Redis Cache (optional, for session storage and caching)
+  redis:
+    image: redis:7-alpine
+    container_name: kf-booking-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - booking-network
+    restart: unless-stopped
+
+networks:
+  booking-network:
+    driver: bridge
+
+volumes:
+  redis-data:
