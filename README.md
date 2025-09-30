@@ -41,25 +41,6 @@ A modern web-based booking system that allows insurance customers to schedule me
          └──────────────────────┘ └──────────────┘ └──────────────┘
 ```
 
-## Key Features
-
-### For Customers
-- **Real-time Availability**: See available time slots instantly
-- **Meeting Type Selection**: Choose between digital (Teams) or physical meetings
-- **Document Upload**: Submit relevant documents before the meeting
-- **Instant Confirmation**: Receive email and SMS confirmations
-- **Multi-brand Support**: Works for both B1 and B2 insurance brands
-
-### For Insurance Representatives
-- **Automatic Calendar Sync**: Meetings appear in Exchange calendar
-- **Teams Integration**: Auto-generated meeting links for digital appointments
-- **Customer Information**: Access uploaded documents and meeting details
-- **Notification System**: Get notified of new bookings immediately
-
-### For Administrators
-- **Microsoft Bookings Integration**: Leverages existing Bookings configuration
-- **Analytics & Reporting**: Track booking patterns and utilization
-- **Flexible Configuration**: Customize forms, notifications, and workflows
 
 ## Technical Stack
 
@@ -80,7 +61,6 @@ A modern web-based booking system that allows insurance customers to schedule me
 ### Infrastructure
 - **Azure AD** - Identity and access management
 - **Microsoft Bookings** - Calendar and appointment management
-- **Azure Blob Storage** - Secure document storage
 - **Docker** - Containerization for easy deployment
 
 ## How It Works
@@ -142,7 +122,6 @@ KFInsuranceBookingSystem/
 - Node.js 18+ and npm
 - Azure AD tenant with admin access
 - Microsoft 365 Business with Bookings enabled
-- Azure subscription (for blob storage)
 
 ### Installation
 ```bash
@@ -175,15 +154,3 @@ npm run dev
 # Or use Docker
 docker-compose up
 ```
-
-## Security Features
-- OAuth 2.0 authentication with Azure AD
-- JWT token-based sessions
-- Input validation and sanitization
-- Encrypted document storage
-- HTTPS/TLS 1.3 enforcement
-- CORS protection
-- Rate limiting
-
-## License
-Proprietary - KF Insurance Company
