@@ -4,6 +4,10 @@
  * including Bookings, Calendar, and Teams integration
  */
 
+import dotenv from 'dotenv';
+import path from 'path';
+dotenv.config({ path: path.resolve(__dirname, '../../.env') });
+
 import { Client } from '@microsoft/microsoft-graph-client';
 import { ConfidentialClientApplication } from '@azure/msal-node';
 import logger from '../utils/logger';
@@ -42,8 +46,12 @@ class GraphApiService {
   private bookingBusinessId: string;
 
   constructor() {
-    // Temporary fix: hardcode the business ID since env loading isn't working
-    this.bookingBusinessId = 'BookingAPIKF@CRM278672.onmicrosoft.com';
+    // Get booking business ID from environment variable
+    this.bookingBusinessId = process.env.BOOKING_BUSINESS_ID || '';
+    if (!this.bookingBusinessId) {
+      logger.error('BOOKING_BUSINESS_ID environment variable is not set');
+      throw new Error('BOOKING_BUSINESS_ID environment variable is required');
+    }
     logger.info('GraphApiService initialized with business ID:', this.bookingBusinessId);
   }
 
@@ -124,7 +132,7 @@ class GraphApiService {
 
     try {
       const response = await this.graphClient!
-        .api(`/solutions/bookingBusinesses/BookingAPIKF@CRM278672.onmicrosoft.com/staffMembers`)
+        .api(`/solutions/bookingBusinesses/${this.bookingBusinessId}/staffMembers`)
         .get();
 
       const staffMembers = response.value || [];
