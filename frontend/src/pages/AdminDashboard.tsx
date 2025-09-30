@@ -96,7 +96,6 @@ const AdminDashboard: React.FC = () => {
   // Filters
   const [startDate, setStartDate] = useState<Date | null>(null);
   const [endDate, setEndDate] = useState<Date | null>(null);
-  const [statusFilter, setStatusFilter] = useState('');
   const [emailFilter, setEmailFilter] = useState('');
 
   // Pagination
@@ -127,7 +126,6 @@ const AdminDashboard: React.FC = () => {
 
       if (startDate) params.append('startDate', startDate.toISOString());
       if (endDate) params.append('endDate', endDate.toISOString());
-      if (statusFilter) params.append('status', statusFilter);
       if (emailFilter) params.append('customerEmail', emailFilter);
 
       const response = await fetch(`/api/v1/admin/bookings?${params}`);
@@ -245,18 +243,9 @@ const AdminDashboard: React.FC = () => {
 
   useEffect(() => {
     fetchBookings();
-  }, [startDate, endDate, statusFilter, emailFilter]); // Removed page and rowsPerPage
+  }, [startDate, endDate, emailFilter]); // Removed page and rowsPerPage
 
   // Helper functions
-  const getStatusColor = (status: string) => {
-    switch (status.toLowerCase()) {
-      case 'confirmed': return 'success';
-      case 'pending': return 'warning';
-      case 'cancelled': return 'error';
-      default: return 'default';
-    }
-  };
-
   const formatDateTime = (dateString: string) => {
     try {
       const utcDate = parseISO(dateString);
@@ -377,21 +366,6 @@ const AdminDashboard: React.FC = () => {
                 }}
               />
             </Grid>
-            <Grid item xs={12} sm={6} md={2}>
-              <FormControl size="small" fullWidth>
-                <InputLabel>Status</InputLabel>
-                <Select
-                  value={statusFilter}
-                  onChange={(e) => setStatusFilter(e.target.value)}
-                  label="Status"
-                >
-                  <MenuItem value="">All</MenuItem>
-                  <MenuItem value="confirmed">Confirmed</MenuItem>
-                  <MenuItem value="pending">Pending</MenuItem>
-                  <MenuItem value="cancelled">Cancelled</MenuItem>
-                </Select>
-              </FormControl>
-            </Grid>
             <Grid item xs={12} sm={6} md={4}>
               <TextField
                 size="small"
@@ -411,7 +385,6 @@ const AdminDashboard: React.FC = () => {
                 onClick={() => {
                   setStartDate(null);
                   setEndDate(null);
-                  setStatusFilter('');
                   setEmailFilter('');
                 }}
               >
@@ -432,7 +405,6 @@ const AdminDashboard: React.FC = () => {
                 <TableCell>Customer</TableCell>
                 <TableCell>Service</TableCell>
                 <TableCell>Date & Time</TableCell>
-                <TableCell>Status</TableCell>
                 <TableCell>Type</TableCell>
                 <TableCell>Assigned Staff</TableCell>
                 <TableCell>Actions</TableCell>
@@ -460,13 +432,6 @@ const AdminDashboard: React.FC = () => {
                     <Typography variant="body2">
                       {formatDateTime(booking.start)}
                     </Typography>
-                  </TableCell>
-                  <TableCell>
-                    <Chip
-                      label={booking.status}
-                      color={getStatusColor(booking.status) as any}
-                      size="small"
-                    />
                   </TableCell>
                   <TableCell>
                     {booking.isOnline ? (
@@ -524,18 +489,16 @@ const AdminDashboard: React.FC = () => {
                       >
                         <PersonAddIcon />
                       </IconButton>
-                      {booking.status !== 'cancelled' && (
-                        <IconButton
-                          size="small"
-                          color="error"
-                          onClick={() => {
-                            setSelectedBooking(booking);
-                            setCancelDialogOpen(true);
-                          }}
-                        >
-                          <CancelIcon />
-                        </IconButton>
-                      )}
+                      <IconButton
+                        size="small"
+                        color="error"
+                        onClick={() => {
+                          setSelectedBooking(booking);
+                          setCancelDialogOpen(true);
+                        }}
+                      >
+                        <CancelIcon />
+                      </IconButton>
                     </Box>
                   </TableCell>
                 </TableRow>
@@ -609,15 +572,6 @@ const AdminDashboard: React.FC = () => {
                     {formatDateTime(selectedBooking.start)} - {format(utcToZonedTime(parseISO(selectedBooking.end), COPENHAGEN_TIMEZONE), 'HH:mm')}
                   </Typography>
                 </Box>
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <Typography variant="subtitle2" color="textSecondary">
-                  Status
-                </Typography>
-                <Chip
-                  label={selectedBooking.status}
-                  color={getStatusColor(selectedBooking.status) as any}
-                />
               </Grid>
               {selectedBooking.notes && (
                 <Grid item xs={12}>
