@@ -294,8 +294,16 @@ class GraphApiService {
 
       logger.info(`Generated ${allSlots.length} potential time slots for ${serviceDurationMinutes}-minute service`);
 
-      // Filter out slots that overlap with any busy period
+      // Get current time in CET/CEST timezone
+      const now = new Date();
+
+      // Filter out slots that overlap with any busy period OR are in the past
       const availableSlots = allSlots.filter(slot => {
+        // Filter out past time slots - slot must start in the future
+        if (slot.start <= now) {
+          return false;
+        }
+
         // Check if this slot overlaps with any busy period
         const hasConflict = busyPeriods.some((busy) => {
           // Check for overlap: slot starts before busy ends AND slot ends after busy starts
@@ -305,7 +313,7 @@ class GraphApiService {
         return !hasConflict; // Only include slots without conflicts
       });
 
-      logger.info(`Found ${availableSlots.length} available slots after filtering conflicts`);
+      logger.info(`Found ${availableSlots.length} available slots after filtering conflicts and past times`);
       return availableSlots;
 
     } catch (error) {
