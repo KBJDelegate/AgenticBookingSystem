@@ -38,10 +38,20 @@ import {
   LocationOn as LocationOnIcon,
   Email as EmailIcon,
   Phone as PhoneIcon,
-  CalendarToday as CalendarIcon
+  CalendarToday as CalendarIcon,
+  PersonAdd as PersonAddIcon
 } from '@mui/icons-material';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { format, parseISO } from 'date-fns';
+import { utcToZonedTime } from 'date-fns-tz';
+
+// Copenhagen timezone constant
+const COPENHAGEN_TIMEZONE = 'Europe/Copenhagen';
+
+interface StaffMember {
+  id: string;
+  name: string;
+}
 
 interface Booking {
   id: string;
@@ -59,6 +69,8 @@ interface Booking {
   isOnline: boolean;
   createdDateTime: string;
   lastUpdatedDateTime: string;
+  staffMemberIds?: string[];
+  assignedStaff?: StaffMember[];
 }
 
 interface BookingStats {
@@ -76,7 +88,7 @@ interface BookingStats {
 }
 
 const AdminDashboard: React.FC = () => {
-  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [allBookings, setAllBookings] = useState<Booking[]>([]); // Store all bookings
   const [stats, setStats] = useState<BookingStats | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -84,41 +96,44 @@ const AdminDashboard: React.FC = () => {
   // Filters
   const [startDate, setStartDate] = useState<Date | null>(null);
   const [endDate, setEndDate] = useState<Date | null>(null);
-  const [statusFilter, setStatusFilter] = useState('');
   const [emailFilter, setEmailFilter] = useState('');
 
   // Pagination
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
-  const [totalBookings, setTotalBookings] = useState(0);
 
   // Dialog states
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
   const [viewDialogOpen, setViewDialogOpen] = useState(false);
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
+  const [assignStaffDialogOpen, setAssignStaffDialogOpen] = useState(false);
 
-  // Fetch bookings with filters
+  // Staff data
+  const [allStaff, setAllStaff] = useState<StaffMember[]>([]);
+  const [selectedStaffIds, setSelectedStaffIds] = useState<string[]>([]);
+  const [staffSelectOpen, setStaffSelectOpen] = useState(false);
+
+  // Fetch all bookings (without pagination - we'll paginate client-side)
   const fetchBookings = async () => {
     setLoading(true);
     setError(null);
 
     try {
       const params = new URLSearchParams({
-        page: (page + 1).toString(),
-        limit: rowsPerPage.toString()
+        page: '1',
+        limit: '500' // Fetch all bookings
       });
 
       if (startDate) params.append('startDate', startDate.toISOString());
       if (endDate) params.append('endDate', endDate.toISOString());
-      if (statusFilter) params.append('status', statusFilter);
       if (emailFilter) params.append('customerEmail', emailFilter);
 
       const response = await fetch(`/api/v1/admin/bookings?${params}`);
       const data = await response.json();
 
       if (data.success) {
-        setBookings(data.data.bookings);
-        setTotalBookings(data.data.pagination.total);
+        setAllBookings(data.data.bookings);
+        setPage(0); // Reset to first page when data changes
       } else {
         setError('Failed to fetch bookings');
       }
@@ -168,28 +183,74 @@ const AdminDashboard: React.FC = () => {
     }
   };
 
+  // Fetch staff members
+  const fetchStaff = async () => {
+    try {
+      const response = await fetch('/api/v1/bookings/staff');
+      const data = await response.json();
+      if (data.success) {
+        const staffMembers = data.data.map((staff: any) => ({
+          id: staff.id,
+          name: staff.displayName || staff.name || 'Unknown'
+        }));
+        setAllStaff(staffMembers);
+      }
+    } catch (err) {
+      console.error('Error fetching staff:', err);
+    }
+  };
+
+  // Assign staff to booking
+  const assignStaff = async (bookingId: string, staffIds: string[]) => {
+    try {
+      const response = await fetch(`/api/v1/admin/bookings/${bookingId}/assign-staff`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ staffMemberIds: staffIds })
+      });
+
+      if (response.ok) {
+        fetchBookings();
+        setAssignStaffDialogOpen(false);
+        setSelectedStaffIds([]);
+      } else {
+        setError('Failed to assign staff');
+      }
+    } catch (err) {
+      setError('Error assigning staff');
+      console.error(err);
+    }
+  };
+
+  // Open assign staff dialog
+  const openAssignStaffDialog = (booking: Booking) => {
+    setSelectedBooking(booking);
+    setSelectedStaffIds(booking.staffMemberIds || []);
+    setAssignStaffDialogOpen(true);
+  };
+
+  // Client-side pagination - slice the bookings array
+  const paginatedBookings = allBookings.slice(
+    page * rowsPerPage,
+    page * rowsPerPage + rowsPerPage
+  );
+
   // Effects
   useEffect(() => {
     fetchStats();
+    fetchStaff();
   }, []);
 
   useEffect(() => {
     fetchBookings();
-  }, [page, rowsPerPage, startDate, endDate, statusFilter, emailFilter]);
+  }, [startDate, endDate, emailFilter]); // Removed page and rowsPerPage
 
   // Helper functions
-  const getStatusColor = (status: string) => {
-    switch (status.toLowerCase()) {
-      case 'confirmed': return 'success';
-      case 'pending': return 'warning';
-      case 'cancelled': return 'error';
-      default: return 'default';
-    }
-  };
-
   const formatDateTime = (dateString: string) => {
     try {
-      return format(parseISO(dateString), 'MMM dd, yyyy HH:mm');
+      const utcDate = parseISO(dateString);
+      const copenhagenTime = utcToZonedTime(utcDate, COPENHAGEN_TIMEZONE);
+      return format(copenhagenTime, 'MMM dd, yyyy HH:mm');
     } catch {
       return dateString;
     }
@@ -305,21 +366,6 @@ const AdminDashboard: React.FC = () => {
                 }}
               />
             </Grid>
-            <Grid item xs={12} sm={6} md={2}>
-              <FormControl size="small" fullWidth>
-                <InputLabel>Status</InputLabel>
-                <Select
-                  value={statusFilter}
-                  onChange={(e) => setStatusFilter(e.target.value)}
-                  label="Status"
-                >
-                  <MenuItem value="">All</MenuItem>
-                  <MenuItem value="confirmed">Confirmed</MenuItem>
-                  <MenuItem value="pending">Pending</MenuItem>
-                  <MenuItem value="cancelled">Cancelled</MenuItem>
-                </Select>
-              </FormControl>
-            </Grid>
             <Grid item xs={12} sm={6} md={4}>
               <TextField
                 size="small"
@@ -339,7 +385,6 @@ const AdminDashboard: React.FC = () => {
                 onClick={() => {
                   setStartDate(null);
                   setEndDate(null);
-                  setStatusFilter('');
                   setEmailFilter('');
                 }}
               >
@@ -360,13 +405,13 @@ const AdminDashboard: React.FC = () => {
                 <TableCell>Customer</TableCell>
                 <TableCell>Service</TableCell>
                 <TableCell>Date & Time</TableCell>
-                <TableCell>Status</TableCell>
                 <TableCell>Type</TableCell>
+                <TableCell>Assigned Staff</TableCell>
                 <TableCell>Actions</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
-              {bookings.map((booking) => (
+              {paginatedBookings.map((booking) => (
                 <TableRow key={booking.id} hover>
                   <TableCell>
                     <Box>
@@ -389,13 +434,6 @@ const AdminDashboard: React.FC = () => {
                     </Typography>
                   </TableCell>
                   <TableCell>
-                    <Chip
-                      label={booking.status}
-                      color={getStatusColor(booking.status) as any}
-                      size="small"
-                    />
-                  </TableCell>
-                  <TableCell>
                     {booking.isOnline ? (
                       <Chip
                         icon={<VideoCallIcon />}
@@ -415,6 +453,24 @@ const AdminDashboard: React.FC = () => {
                     )}
                   </TableCell>
                   <TableCell>
+                    {booking.assignedStaff && booking.assignedStaff.length > 0 ? (
+                      <Box display="flex" gap={0.5} flexWrap="wrap">
+                        {booking.assignedStaff.map((staff) => (
+                          <Chip
+                            key={staff.id}
+                            label={staff.name}
+                            size="small"
+                            variant="outlined"
+                          />
+                        ))}
+                      </Box>
+                    ) : (
+                      <Typography variant="body2" color="textSecondary">
+                        No staff assigned
+                      </Typography>
+                    )}
+                  </TableCell>
+                  <TableCell>
                     <Box display="flex" gap={1}>
                       <IconButton
                         size="small"
@@ -425,18 +481,24 @@ const AdminDashboard: React.FC = () => {
                       >
                         <ViewIcon />
                       </IconButton>
-                      {booking.status !== 'cancelled' && (
-                        <IconButton
-                          size="small"
-                          color="error"
-                          onClick={() => {
-                            setSelectedBooking(booking);
-                            setCancelDialogOpen(true);
-                          }}
-                        >
-                          <CancelIcon />
-                        </IconButton>
-                      )}
+                      <IconButton
+                        size="small"
+                        color="primary"
+                        onClick={() => openAssignStaffDialog(booking)}
+                        title="Assign Staff"
+                      >
+                        <PersonAddIcon />
+                      </IconButton>
+                      <IconButton
+                        size="small"
+                        color="error"
+                        onClick={() => {
+                          setSelectedBooking(booking);
+                          setCancelDialogOpen(true);
+                        }}
+                      >
+                        <CancelIcon />
+                      </IconButton>
                     </Box>
                   </TableCell>
                 </TableRow>
@@ -446,7 +508,7 @@ const AdminDashboard: React.FC = () => {
         </TableContainer>
         <TablePagination
           component="div"
-          count={totalBookings}
+          count={allBookings.length}
           page={page}
           onPageChange={(_, newPage) => setPage(newPage)}
           rowsPerPage={rowsPerPage}
@@ -464,9 +526,7 @@ const AdminDashboard: React.FC = () => {
         maxWidth="md"
         fullWidth
       >
-        <DialogTitle>
-          <Typography variant="h6">Booking Details</Typography>
-        </DialogTitle>
+        <DialogTitle>Booking Details</DialogTitle>
         <DialogContent>
           {selectedBooking && (
             <Grid container spacing={2}>
@@ -509,18 +569,9 @@ const AdminDashboard: React.FC = () => {
                 <Box display="flex" alignItems="center" gap={1}>
                   <CalendarIcon fontSize="small" />
                   <Typography variant="body1">
-                    {formatDateTime(selectedBooking.start)} - {format(parseISO(selectedBooking.end), 'HH:mm')}
+                    {formatDateTime(selectedBooking.start)} - {format(utcToZonedTime(parseISO(selectedBooking.end), COPENHAGEN_TIMEZONE), 'HH:mm')}
                   </Typography>
                 </Box>
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <Typography variant="subtitle2" color="textSecondary">
-                  Status
-                </Typography>
-                <Chip
-                  label={selectedBooking.status}
-                  color={getStatusColor(selectedBooking.status) as any}
-                />
               </Grid>
               {selectedBooking.notes && (
                 <Grid item xs={12}>
@@ -574,6 +625,70 @@ const AdminDashboard: React.FC = () => {
             variant="contained"
           >
             Yes, Cancel Booking
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Assign Staff Dialog */}
+      <Dialog
+        open={assignStaffDialogOpen}
+        onClose={() => setAssignStaffDialogOpen(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>Assign Staff to Booking</DialogTitle>
+        <DialogContent>
+          <DialogContentText sx={{ mb: 2 }}>
+            Assign staff members to this booking for {selectedBooking?.customerName}
+          </DialogContentText>
+          <FormControl fullWidth>
+            <InputLabel>Select Staff Members</InputLabel>
+            <Select
+              multiple
+              open={staffSelectOpen}
+              onOpen={() => setStaffSelectOpen(true)}
+              onClose={() => setStaffSelectOpen(false)}
+              value={selectedStaffIds}
+              onChange={(e) => setSelectedStaffIds(e.target.value as string[])}
+              label="Select Staff Members"
+              MenuProps={{
+                PaperProps: {
+                  style: {
+                    maxHeight: 300,
+                  },
+                },
+              }}
+              renderValue={(selected) => (
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                  {selected.map((value) => {
+                    const staff = allStaff.find(s => s.id === value);
+                    return (
+                      <Chip key={value} label={staff?.name || value} size="small" />
+                    );
+                  })}
+                </Box>
+              )}
+            >
+              {allStaff.map((staff) => (
+                <MenuItem
+                  key={staff.id}
+                  value={staff.id}
+                  onClick={() => setStaffSelectOpen(false)}
+                >
+                  {staff.name}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setAssignStaffDialogOpen(false)}>Cancel</Button>
+          <Button
+            onClick={() => selectedBooking && assignStaff(selectedBooking.id, selectedStaffIds)}
+            color="primary"
+            variant="contained"
+          >
+            Assign Staff
           </Button>
         </DialogActions>
       </Dialog>

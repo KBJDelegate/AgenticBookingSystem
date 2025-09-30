@@ -45,14 +45,40 @@ export class BookingController {
 
       logger.info(`Creating booking for ${customerEmail}`);
 
-      // Step 1: Create booking in Microsoft Bookings
+      // Step 1: Get service details to determine the correct duration
+      const services = await graphApiService.getServices();
+      const service = services.find((s: any) => s.id === serviceId);
+
+      if (!service) {
+        res.status(400).json({
+          success: false,
+          error: 'Service not found'
+        });
+        return;
+      }
+
+      // Extract service duration from ISO 8601 format
+      // Examples: "PT30M" = 30 minutes, "PT1H" = 60 minutes, "PT1H30M" = 90 minutes
+      const duration = service.defaultDuration || 'PT30M';
+      const hours = duration.match(/(\d+)H/);
+      const minutes = duration.match(/(\d+)M/);
+      const serviceDurationMinutes = (hours ? parseInt(hours[1]) * 60 : 0) + (minutes ? parseInt(minutes[1]) : 0);
+
+      // Calculate the correct end time based on service duration
+      const startDateTime = new Date(startTime);
+      const endDateTime = new Date(startDateTime.getTime() + serviceDurationMinutes * 60 * 1000);
+
+      logger.info(`Service "${service.displayName}" duration: ${serviceDurationMinutes} minutes`);
+      logger.info(`Booking time: ${startDateTime.toISOString()} to ${endDateTime.toISOString()}`);
+
+      // Step 2: Create booking in Microsoft Bookings with correct duration
       const booking = await graphApiService.createBooking({
         customerName,
         customerEmail,
         customerPhone,
         serviceId,
-        start: new Date(startTime),
-        end: new Date(endTime),
+        start: startDateTime,
+        end: endDateTime,
         notes,
         isDigital: meetingType === 'digital'
       });
@@ -303,6 +329,59 @@ export class BookingController {
 
     } catch (error) {
       logger.error('Error getting services:', error);
+      next(error);
+    }
+  }
+
+  /**
+   * Get all staff members
+   * GET /api/v1/staff
+   */
+  async getStaffMembers(_req: Request, res: Response, next: NextFunction) {
+    try {
+      logger.info('Getting staff members from Microsoft Bookings');
+
+      const staffMembers = await graphApiService.getStaffMembers();
+
+      res.json({
+        success: true,
+        data: staffMembers
+      });
+
+    } catch (error) {
+      logger.error('Error getting staff members:', error);
+      next(error);
+    }
+  }
+
+  /**
+   * Assign staff to a booking
+   * PUT /api/v1/admin/bookings/:id/assign-staff
+   */
+  async assignStaffToBooking(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { id } = req.params;
+      const { staffMemberIds } = req.body;
+
+      logger.info(`Assigning staff to booking ${id}:`, staffMemberIds);
+
+      if (!Array.isArray(staffMemberIds)) {
+        res.status(400).json({
+          success: false,
+          message: 'staffMemberIds must be an array'
+        });
+        return;
+      }
+
+      await graphApiService.assignStaffToBooking(id, staffMemberIds);
+
+      res.json({
+        success: true,
+        message: 'Staff assigned successfully'
+      });
+
+    } catch (error) {
+      logger.error('Error assigning staff to booking:', error);
       next(error);
     }
   }

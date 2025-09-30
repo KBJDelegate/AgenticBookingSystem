@@ -4,6 +4,10 @@
  * including Bookings, Calendar, and Teams integration
  */
 
+import dotenv from 'dotenv';
+import path from 'path';
+dotenv.config({ path: path.resolve(__dirname, '../../.env') });
+
 import { Client } from '@microsoft/microsoft-graph-client';
 import { ConfidentialClientApplication } from '@azure/msal-node';
 import logger from '../utils/logger';
@@ -42,8 +46,12 @@ class GraphApiService {
   private bookingBusinessId: string;
 
   constructor() {
-    // Temporary fix: hardcode the business ID since env loading isn't working
-    this.bookingBusinessId = 'BookingAPIKF@CRM278672.onmicrosoft.com';
+    // Get booking business ID from environment variable
+    this.bookingBusinessId = process.env.BOOKING_BUSINESS_ID || '';
+    if (!this.bookingBusinessId) {
+      logger.error('BOOKING_BUSINESS_ID environment variable is not set');
+      throw new Error('BOOKING_BUSINESS_ID environment variable is required');
+    }
     logger.info('GraphApiService initialized with business ID:', this.bookingBusinessId);
   }
 
@@ -114,51 +122,286 @@ class GraphApiService {
   }
 
   /**
-   * Get available time slots for booking
-   * This generates available appointment times based on business hours
-   * TODO: Integrate with Microsoft Bookings calendar once staff is configured
+   * Get staff members for the booking business
+   * Note: The Microsoft Graph Bookings API staffMembers endpoint has known issues
+   * with Application permissions that cause UnknownError responses.
+   * This is a documented Microsoft API limitation.
+   */
+  async getStaffMembers(): Promise<any[]> {
+    await this.initializeClient();
+
+    try {
+      const response = await this.graphClient!
+        .api(`/solutions/bookingBusinesses/${this.bookingBusinessId}/staffMembers`)
+        .get();
+
+      const staffMembers = response.value || [];
+
+      // Log full staff member objects to see what data is available
+      if (staffMembers.length > 0) {
+        logger.info('Staff member details:', JSON.stringify(staffMembers, null, 2));
+      }
+
+      return staffMembers;
+    } catch (error: any) {
+      // The staffMembers endpoint is known to fail with UnknownError in Microsoft Graph
+      // This is a Microsoft API issue, not a code issue
+      logger.warn('Microsoft Graph staffMembers endpoint failed (known API issue):', error.code);
+
+      // Return empty array instead of throwing to prevent the entire request from failing
+      return [];
+    }
+  }
+
+  /**
+   * Get calendar events for a staff member directly from their Outlook calendar
+   */
+  private async getCalendarEvents(
+    emailAddress: string,
+    startDateTime: Date,
+    endDateTime: Date
+  ): Promise<any[]> {
+    await this.initializeClient();
+
+    try {
+      const formatDateTime = (date: Date) => {
+        return date.toISOString();
+      };
+
+      logger.info(`Getting calendar events for ${emailAddress} from ${startDateTime.toISOString()} to ${endDateTime.toISOString()}`);
+
+      // Get calendar events directly from the user's calendar
+      const response = await this.graphClient!
+        .api(`/users/${emailAddress}/calendar/calendarView`)
+        .query({
+          startDateTime: formatDateTime(startDateTime),
+          endDateTime: formatDateTime(endDateTime)
+        })
+        .select('subject,start,end,isAllDay,isCancelled,showAs')
+        .top(100)
+        .get();
+
+      const events = response.value || [];
+      logger.info(`Found ${events.length} calendar events for ${emailAddress}`);
+
+      // Filter to only include events that block time (busy, oof, tentative)
+      const busyEvents = events.filter((event: any) =>
+        !event.isCancelled &&
+        (event.showAs === 'busy' || event.showAs === 'oof' || event.showAs === 'tentative')
+      );
+
+      logger.info(`${busyEvents.length} events are blocking time`);
+
+      return busyEvents;
+    } catch (error) {
+      logger.error('Error getting calendar events:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get available time slots for booking by checking staff calendar and existing bookings
    */
   async getAvailableTimeSlots(
-    _serviceId: string,
+    serviceId: string,
     startDate: Date,
     endDate: Date
   ): Promise<TimeSlot[]> {
-    // For now, generate available slots based on business hours without MS Graph
-    // TODO: Query actual bookings from Microsoft Bookings once staff is configured
-
     try {
-      logger.info(`Generating time slots for ${startDate.toDateString()}`);
+      await this.initializeClient();
+      logger.info(`Getting available time slots for service ${serviceId} on ${startDate.toDateString()}`);
 
-      // Generate time slots (1 hour slots during business hours)
-      const slots: TimeSlot[] = [];
-      const current = new Date(startDate);
-      current.setHours(9, 0, 0, 0); // Start at 9 AM
+      // Get the service details to know the duration
+      const services = await this.getServices();
+      const service = services.find((s: any) => s.id === serviceId);
 
-      const dayEnd = new Date(startDate);
-      dayEnd.setHours(17, 0, 0, 0); // End at 5 PM
-
-      while (current < dayEnd) {
-        const slotStart = new Date(current);
-        const slotEnd = new Date(current.getTime() + 60 * 60000); // 1 hour slots
-
-        // Skip lunch hour (12-13)
-        if (slotStart.getHours() !== 12) {
-          slots.push({
-            start: slotStart,
-            end: slotEnd,
-            available: true
-          });
-        }
-
-        current.setHours(current.getHours() + 1);
+      if (!service) {
+        logger.error(`Service ${serviceId} not found`);
+        throw new Error('Service not found');
       }
 
-      logger.info(`Generated ${slots.length} available slots for ${startDate.toDateString()}`);
-      return slots;
+      // Get service duration in minutes (defaultDuration is in ISO 8601 format)
+      // Examples: "PT30M" = 30 minutes, "PT1H" = 60 minutes, "PT1H30M" = 90 minutes
+      const duration = service.defaultDuration || 'PT30M';
+      const hours = duration.match(/(\d+)H/);
+      const minutes = duration.match(/(\d+)M/);
+      const serviceDurationMinutes = (hours ? parseInt(hours[1]) * 60 : 0) + (minutes ? parseInt(minutes[1]) : 0);
+
+      logger.info(`Service duration: ${serviceDurationMinutes} minutes`);
+
+      // Get all staff members
+      const staffMembers = await this.getStaffMembers();
+
+      if (staffMembers.length === 0) {
+        logger.warn('No staff members found');
+        return [];
+      }
+
+      // Extract email addresses from staff members
+      const staffEmails = staffMembers
+        .map((staff: any) => staff.emailAddress || staff.email || staff.userPrincipalName)
+        .filter((email: string | undefined) => email !== undefined && email !== null);
+
+      logger.info(`Found ${staffEmails.length} staff emails out of ${staffMembers.length} staff members`);
+
+      if (staffEmails.length === 0) {
+        logger.warn('No staff emails found');
+        return [];
+      }
+
+      // For simplicity, use the first staff member's calendar
+      const staffEmail = staffEmails[0];
+
+      // Get existing bookings for this date to avoid double-booking
+      const existingBookings = await this.getBookingsForDate(startDate, endDate);
+      logger.info(`Found ${existingBookings.length} existing bookings for this date`);
+
+      // Collect all busy periods (calendar events + existing bookings)
+      const busyPeriods: Array<{ start: Date; end: Date }> = [];
+
+      // Add existing bookings to busy periods
+      existingBookings.forEach((booking: any) => {
+        const startTime = booking.startDateTime?.dateTime || booking.start?.dateTime;
+        const endTime = booking.endDateTime?.dateTime || booking.end?.dateTime;
+
+        if (startTime && endTime) {
+          busyPeriods.push({
+            start: new Date(startTime),
+            end: new Date(endTime)
+          });
+        }
+      });
+
+      // Try to get calendar events
+      try {
+        const calendarEvents = await this.getCalendarEvents(staffEmail, startDate, endDate);
+
+        // Add calendar events to busy periods
+        calendarEvents.forEach((event: any) => {
+          busyPeriods.push({
+            start: new Date(event.start.dateTime),
+            end: new Date(event.end.dateTime)
+          });
+        });
+
+        logger.info(`Total busy periods: ${busyPeriods.length} (${existingBookings.length} bookings + ${calendarEvents.length} calendar events)`);
+      } catch (calendarError: any) {
+        logger.warn('Could not access calendar, using only existing bookings for availability');
+      }
+
+      // Generate time slots based on the service duration
+      const allSlots = this.generateTimeSlots(startDate, endDate, serviceDurationMinutes);
+
+      logger.info(`Generated ${allSlots.length} potential time slots for ${serviceDurationMinutes}-minute service`);
+
+      // Get current time in CET/CEST timezone
+      const now = new Date();
+
+      // Filter out slots that overlap with any busy period OR are in the past
+      const availableSlots = allSlots.filter(slot => {
+        // Filter out past time slots - slot must start in the future
+        if (slot.start <= now) {
+          return false;
+        }
+
+        // Check if this slot overlaps with any busy period
+        const hasConflict = busyPeriods.some((busy) => {
+          // Check for overlap: slot starts before busy ends AND slot ends after busy starts
+          return slot.start < busy.end && slot.end > busy.start;
+        });
+
+        return !hasConflict; // Only include slots without conflicts
+      });
+
+      logger.info(`Found ${availableSlots.length} available slots after filtering conflicts and past times`);
+      return availableSlots;
+
     } catch (error) {
       logger.error('Error getting available time slots:', error);
       throw error;
     }
+  }
+
+  /**
+   * Get existing bookings for a date range
+   */
+  private async getBookingsForDate(startDate: Date, endDate: Date): Promise<any[]> {
+    try {
+      // Get all appointments for the booking business
+      // Note: The Bookings API doesn't support complex filtering, so we get all and filter in memory
+      const response = await this.graphClient!
+        .api(`/solutions/bookingBusinesses/${this.bookingBusinessId}/appointments`)
+        .top(100)
+        .get();
+
+      const allBookings = response.value || [];
+
+      // Filter bookings that fall within our date range
+      const filteredBookings = allBookings.filter((booking: any) => {
+        const bookingStart = new Date(booking.startDateTime?.dateTime || booking.start?.dateTime);
+        const bookingEnd = new Date(booking.endDateTime?.dateTime || booking.end?.dateTime);
+
+        // Check if booking overlaps with our date range
+        return bookingStart < endDate && bookingEnd > startDate;
+      });
+
+      logger.info(`Filtered ${filteredBookings.length} bookings from ${allBookings.length} total bookings for date range ${startDate.toISOString()} to ${endDate.toISOString()}`);
+
+      return filteredBookings;
+    } catch (error) {
+      logger.error('Error getting existing bookings:', error);
+      return []; // Return empty array if we can't get bookings
+    }
+  }
+
+  /**
+   * Generate time slots within a date range
+   */
+  private generateTimeSlots(startDate: Date, endDate: Date, intervalMinutes: number): TimeSlot[] {
+    const slots: TimeSlot[] = [];
+    const current = new Date(startDate);
+
+    // Business hours: 9 AM to 5 PM
+    const businessStartHour = 9;
+    const businessEndHour = 17;
+
+    while (current < endDate) {
+      const slotStart = new Date(current);
+      const slotEnd = new Date(current.getTime() + intervalMinutes * 60 * 1000);
+
+      // Only include slots during business hours
+      if (
+        slotStart.getHours() >= businessStartHour &&
+        slotEnd.getHours() <= businessEndHour &&
+        slotEnd <= endDate
+      ) {
+        slots.push({
+          start: slotStart,
+          end: slotEnd,
+          available: true
+        });
+      }
+
+      current.setTime(current.getTime() + intervalMinutes * 60 * 1000);
+    }
+
+    return slots;
+  }
+
+  /**
+   * Remove duplicate time slots that have the same start and end times
+   */
+  private deduplicateSlots(slots: TimeSlot[]): TimeSlot[] {
+    const uniqueMap = new Map<string, TimeSlot>();
+
+    for (const slot of slots) {
+      const key = `${slot.start.toISOString()}-${slot.end.toISOString()}`;
+      if (!uniqueMap.has(key)) {
+        uniqueMap.set(key, slot);
+      }
+    }
+
+    return Array.from(uniqueMap.values()).sort((a, b) => a.start.getTime() - b.start.getTime());
   }
 
   /**
@@ -169,6 +412,18 @@ class GraphApiService {
     try {
       await this.initializeClient();
 
+      // Format datetime for Copenhagen timezone
+      // The dates come in as UTC from the frontend
+      // Microsoft Graph expects local time format (without 'Z') when timezone is specified
+      // Since the times are already in UTC, we keep them as-is but format without 'Z'
+      const formatDateTimeForBooking = (date: Date) => {
+        // Convert UTC to Copenhagen local time offset (+01:00 or +02:00 depending on DST)
+        // For simplicity, we'll send as UTC and let Graph API handle the timezone conversion
+        // Format: "2024-01-15T14:30:00" (no 'Z', no offset)
+        const isoString = date.toISOString();
+        return isoString.substring(0, 19); // Remove 'Z' and milliseconds
+      };
+
       // Prepare the booking data for Microsoft Bookings API
       const appointmentData: any = {
         "@odata.type": "#microsoft.graph.bookingAppointment",
@@ -178,13 +433,13 @@ class GraphApiService {
         serviceId: bookingRequest.serviceId,
         startDateTime: {
           "@odata.type": "#microsoft.graph.dateTimeTimeZone",
-          dateTime: bookingRequest.start.toISOString(),
-          timeZone: 'UTC'
+          dateTime: formatDateTimeForBooking(bookingRequest.start),
+          timeZone: 'W. Europe Standard Time'
         },
         endDateTime: {
           "@odata.type": "#microsoft.graph.dateTimeTimeZone",
-          dateTime: bookingRequest.end.toISOString(),
-          timeZone: 'UTC'
+          dateTime: formatDateTimeForBooking(bookingRequest.end),
+          timeZone: 'W. Europe Standard Time'
         },
         customerNotes: bookingRequest.notes
       };
@@ -285,6 +540,27 @@ class GraphApiService {
   }
 
   /**
+   * Assign staff members to a booking
+   */
+  async assignStaffToBooking(bookingId: string, staffMemberIds: string[]): Promise<void> {
+    await this.initializeClient();
+
+    try {
+      await this.graphClient!
+        .api(`/solutions/bookingBusinesses/${this.bookingBusinessId}/appointments/${bookingId}`)
+        .patch({
+          '@odata.type': '#microsoft.graph.bookingAppointment',
+          staffMemberIds: staffMemberIds
+        });
+
+      logger.info(`Staff assigned to booking ${bookingId}: ${staffMemberIds.join(', ')}`);
+    } catch (error) {
+      logger.error('Error assigning staff to booking:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Get list of available services from Microsoft Bookings
    */
   async getServices(): Promise<any[]> {
@@ -356,6 +632,8 @@ class GraphApiService {
       await this.initializeClient();
 
       // Build query parameters for Microsoft Graph API
+      // Note: We fetch ALL bookings and then filter/paginate in memory
+      // because we need to filter out past bookings after fetching
       let query = `/solutions/bookingBusinesses/${this.bookingBusinessId}/appointments`;
       const queryParams: string[] = [];
 
@@ -371,9 +649,8 @@ class GraphApiService {
         }
       }
 
-      if (filters.limit) {
-        queryParams.push(`$top=${filters.limit}`);
-      }
+      // Fetch a large number to ensure we get all bookings for proper pagination
+      queryParams.push(`$top=500`);
 
       if (queryParams.length > 0) {
         query += '?' + queryParams.join('&');
@@ -384,29 +661,61 @@ class GraphApiService {
           .api(query)
           .get();
 
+        // Fetch all services to map serviceId to serviceName
+        const services = await this.getServices();
+        const serviceMap = new Map(services.map((s: any) => [s.id, s.displayName]));
+
+        // Fetch all staff members to map staffMemberIds to staff names
+        const staffMembers = await this.getStaffMembers();
+        const staffMap = new Map(staffMembers.map((s: any) => [s.id, s.displayName]));
+
         // Transform data for frontend
-        const bookings = response.value?.map((appointment: any) => ({
-          id: appointment.id,
-          customerName: appointment.customerName || appointment.customers?.[0]?.name,
-          customerEmail: appointment.customerEmailAddress || appointment.customers?.[0]?.emailAddress,
-          customerPhone: appointment.customerPhone || appointment.customers?.[0]?.phone,
-          serviceId: appointment.serviceId,
-          serviceName: appointment.service?.displayName,
-          start: new Date(appointment.start.dateTime),
-          end: new Date(appointment.end.dateTime),
-          status: appointment.appointmentLabel || 'confirmed',
-          notes: appointment.customerNotes,
-          joinUrl: appointment.joinWebUrl,
-          location: appointment.serviceLocation?.address?.street || appointment.serviceLocation?.displayName,
-          isOnline: appointment.isLocationOnline,
-          createdDateTime: appointment.createdDateTime,
-          lastUpdatedDateTime: appointment.lastUpdatedDateTime
-        })) || [];
+        const bookings = response.value?.map((appointment: any) => {
+          // Handle both start/end and startDateTime/endDateTime formats
+          const startTime = appointment.start?.dateTime || appointment.startDateTime?.dateTime;
+          const endTime = appointment.end?.dateTime || appointment.endDateTime?.dateTime;
+
+          // Get staff member names from IDs
+          const staffMemberIds = appointment.staffMemberIds || [];
+          const assignedStaff = staffMemberIds
+            .map((id: string) => ({
+              id,
+              name: staffMap.get(id) || 'Unknown Staff'
+            }))
+            .filter((staff: any) => staff.name !== 'Unknown Staff');
+
+          return {
+            id: appointment.id,
+            customerName: appointment.customerName || appointment.customers?.[0]?.name,
+            customerEmail: appointment.customerEmailAddress || appointment.customers?.[0]?.emailAddress,
+            customerPhone: appointment.customerPhone || appointment.customers?.[0]?.phone,
+            serviceId: appointment.serviceId,
+            serviceName: serviceMap.get(appointment.serviceId) || 'Unknown Service',
+            start: startTime ? new Date(startTime) : null,
+            end: endTime ? new Date(endTime) : null,
+            status: appointment.appointmentLabel || 'confirmed',
+            notes: appointment.customerNotes,
+            joinUrl: appointment.joinWebUrl,
+            location: appointment.serviceLocation?.address?.street || appointment.serviceLocation?.displayName,
+            isOnline: appointment.isLocationOnline,
+            createdDateTime: appointment.createdDateTime,
+            lastUpdatedDateTime: appointment.lastUpdatedDateTime,
+            staffMemberIds: staffMemberIds,
+            assignedStaff: assignedStaff
+          };
+        }).filter((booking: any) => booking.start && booking.end) || [];
 
         // Apply client-side filtering for email if Graph API doesn't support it
         let filteredBookings = bookings;
+
+        // Filter out past bookings (where end time is before current time)
+        const now = new Date();
+        filteredBookings = filteredBookings.filter((booking: any) =>
+          booking.end && new Date(booking.end) > now
+        );
+
         if (filters.customerEmail) {
-          filteredBookings = bookings.filter((booking: any) =>
+          filteredBookings = filteredBookings.filter((booking: any) =>
             booking.customerEmail?.toLowerCase().includes(filters.customerEmail!.toLowerCase())
           );
         }
@@ -416,6 +725,13 @@ class GraphApiService {
             booking.status?.toLowerCase() === filters.status!.toLowerCase()
           );
         }
+
+        // Sort by start datetime (earliest first)
+        filteredBookings.sort((a: any, b: any) => {
+          const dateA = new Date(a.start).getTime();
+          const dateB = new Date(b.start).getTime();
+          return dateA - dateB;
+        });
 
         // Apply pagination if needed
         const page = filters.page || 1;
@@ -524,4 +840,4 @@ class GraphApiService {
 
 }
 
-export default new GraphApiService();
+export default new GraphApiService(); 

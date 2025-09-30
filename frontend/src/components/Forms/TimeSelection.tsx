@@ -15,11 +15,15 @@ import {
   Alert
 } from '@mui/material';
 import { DateCalendar } from '@mui/x-date-pickers/DateCalendar';
-import { format, addDays, isSameDay } from 'date-fns';
+import { format, addDays } from 'date-fns';
+import { utcToZonedTime } from 'date-fns-tz';
 import AccessTimeIcon from '@mui/icons-material/AccessTime';
 
 // Import API service
 import { bookingApi } from '../../services/bookingApi';
+
+// Copenhagen timezone constant
+const COPENHAGEN_TIMEZONE = 'Europe/Copenhagen';
 
 interface TimeSlot {
   time: string;
@@ -73,8 +77,8 @@ const TimeSelection: React.FC<Props> = ({
       const convertedSlots: TimeSlot[] = slots
         .filter((slot: any) => slot.available) // Only show available slots
         .map((slot: any) => {
-          const startDateTime = new Date(slot.start);
-          const endDateTime = new Date(slot.end);
+          const startDateTime = utcToZonedTime(new Date(slot.start), COPENHAGEN_TIMEZONE);
+          const endDateTime = utcToZonedTime(new Date(slot.end), COPENHAGEN_TIMEZONE);
           const timeString = format(startDateTime, 'h:mm a');
 
           return {
@@ -100,13 +104,32 @@ const TimeSelection: React.FC<Props> = ({
   };
 
   const handleTimeSelect = (slot: TimeSlot) => {
-    if (slot.available) {
+    if (slot.available && selectedDate) {
       setSelectedTime(slot.time);
+
+      // Combine the selected date with the time from the slot
+      // Use date components directly to avoid timezone issues
+      const year = selectedDate.getFullYear();
+      const month = selectedDate.getMonth();
+      const day = selectedDate.getDate();
+
+      const startDateTime = new Date(year, month, day);
+      startDateTime.setHours(slot.startDateTime.getHours());
+      startDateTime.setMinutes(slot.startDateTime.getMinutes());
+      startDateTime.setSeconds(0);
+      startDateTime.setMilliseconds(0);
+
+      const endDateTime = new Date(year, month, day);
+      endDateTime.setHours(slot.endDateTime.getHours());
+      endDateTime.setMinutes(slot.endDateTime.getMinutes());
+      endDateTime.setSeconds(0);
+      endDateTime.setMilliseconds(0);
+
       updateFormData({
         selectedDate: selectedDate,
         selectedTime: slot.time,
-        startDateTime: slot.startDateTime,
-        endDateTime: slot.endDateTime
+        startDateTime: startDateTime,
+        endDateTime: endDateTime
       });
     }
   };
