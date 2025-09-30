@@ -169,6 +169,18 @@ class GraphApiService {
     try {
       await this.initializeClient();
 
+      // Format datetime for Copenhagen timezone
+      // The dates come in as UTC from the frontend
+      // Microsoft Graph expects local time format (without 'Z') when timezone is specified
+      // Since the times are already in UTC, we keep them as-is but format without 'Z'
+      const formatDateTimeForBooking = (date: Date) => {
+        // Convert UTC to Copenhagen local time offset (+01:00 or +02:00 depending on DST)
+        // For simplicity, we'll send as UTC and let Graph API handle the timezone conversion
+        // Format: "2024-01-15T14:30:00" (no 'Z', no offset)
+        const isoString = date.toISOString();
+        return isoString.substring(0, 19); // Remove 'Z' and milliseconds
+      };
+
       // Prepare the booking data for Microsoft Bookings API
       const appointmentData: any = {
         "@odata.type": "#microsoft.graph.bookingAppointment",
@@ -178,13 +190,13 @@ class GraphApiService {
         serviceId: bookingRequest.serviceId,
         startDateTime: {
           "@odata.type": "#microsoft.graph.dateTimeTimeZone",
-          dateTime: bookingRequest.start.toISOString(),
-          timeZone: 'UTC'
+          dateTime: formatDateTimeForBooking(bookingRequest.start),
+          timeZone: 'W. Europe Standard Time'
         },
         endDateTime: {
           "@odata.type": "#microsoft.graph.dateTimeTimeZone",
-          dateTime: bookingRequest.end.toISOString(),
-          timeZone: 'UTC'
+          dateTime: formatDateTimeForBooking(bookingRequest.end),
+          timeZone: 'W. Europe Standard Time'
         },
         customerNotes: bookingRequest.notes
       };

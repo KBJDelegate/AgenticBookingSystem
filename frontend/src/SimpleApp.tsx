@@ -17,7 +17,7 @@ function SimpleApp() {
         <h2>Debug Info:</h2>
         <ul>
           <li>React version: {React.version}</li>
-          <li>Environment: {process.env.NODE_ENV}</li>
+          <li>Environment: {import.meta.env.MODE || 'unknown'}</li>
           <li>Current URL: {window.location.href}</li>
         </ul>
       </div>

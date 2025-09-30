@@ -42,6 +42,10 @@ import {
 } from '@mui/icons-material';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { format, parseISO } from 'date-fns';
+import { utcToZonedTime } from 'date-fns-tz';
+
+// Copenhagen timezone constant
+const COPENHAGEN_TIMEZONE = 'Europe/Copenhagen';
 
 interface Booking {
   id: string;
@@ -189,7 +193,9 @@ const AdminDashboard: React.FC = () => {
 
   const formatDateTime = (dateString: string) => {
     try {
-      return format(parseISO(dateString), 'MMM dd, yyyy HH:mm');
+      const utcDate = parseISO(dateString);
+      const copenhagenTime = utcToZonedTime(utcDate, COPENHAGEN_TIMEZONE);
+      return format(copenhagenTime, 'MMM dd, yyyy HH:mm') + ' CET/CEST';
     } catch {
       return dateString;
     }
@@ -509,7 +515,7 @@ const AdminDashboard: React.FC = () => {
                 <Box display="flex" alignItems="center" gap={1}>
                   <CalendarIcon fontSize="small" />
                   <Typography variant="body1">
-                    {formatDateTime(selectedBooking.start)} - {format(parseISO(selectedBooking.end), 'HH:mm')}
+                    {formatDateTime(selectedBooking.start)} - {format(utcToZonedTime(parseISO(selectedBooking.end), COPENHAGEN_TIMEZONE), 'HH:mm')}
                   </Typography>
                 </Box>
               </Grid>

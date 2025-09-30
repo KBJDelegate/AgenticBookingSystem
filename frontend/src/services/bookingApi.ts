@@ -4,6 +4,10 @@
  */
 
 import axios, { AxiosInstance } from 'axios';
+import { utcToZonedTime, zonedTimeToUtc } from 'date-fns-tz';
+
+// Copenhagen timezone constant
+const COPENHAGEN_TIMEZONE = 'Europe/Copenhagen';
 
 // API base URL - can be configured via environment variables
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api/v1';
@@ -73,7 +77,7 @@ class BookingApi {
       const response = await this.api.get('/availability', {
         params: {
           serviceId,
-          date: date.toISOString().split('T')[0] // YYYY-MM-DD format
+          date: utcToZonedTime(date, COPENHAGEN_TIMEZONE).toISOString().split('T')[0] // YYYY-MM-DD format in Copenhagen timezone
         },
         // Disable caching to prevent 304 responses
         headers: {
@@ -93,14 +97,28 @@ class BookingApi {
    */
   async createBooking(formData: any) {
     try {
+      // Format datetime preserving the local Copenhagen time values
+      // The Date objects from the form represent Copenhagen local time
+      // We need to format them as-is without timezone conversion
+      const formatLocalDateTime = (date: Date) => {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        const hours = String(date.getHours()).padStart(2, '0');
+        const minutes = String(date.getMinutes()).padStart(2, '0');
+        const seconds = String(date.getSeconds()).padStart(2, '0');
+
+        return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`;
+      };
+
       // Prepare booking data as JSON (for now, without file uploads)
       const bookingData = {
         brand: formData.brand || 'B1', // Default to B1 if not provided
         serviceId: formData.serviceId,
         meetingType: formData.meetingType,
         businessPurpose: formData.businessPurpose || false,
-        startTime: formData.startDateTime.toISOString(),
-        endTime: formData.endDateTime.toISOString(),
+        startTime: formatLocalDateTime(formData.startDateTime),
+        endTime: formatLocalDateTime(formData.endDateTime),
         customerName: formData.customerName,
         customerEmail: formData.customerEmail,
         customerPhone: formData.customerPhone,
@@ -155,8 +173,8 @@ class BookingApi {
   ) {
     try {
       const response = await this.api.put(`/bookings/${bookingId}/reschedule`, {
-        newStartTime: newStartTime.toISOString(),
-        newEndTime: newEndTime.toISOString()
+        newStartTime: zonedTimeToUtc(newStartTime, COPENHAGEN_TIMEZONE).toISOString(),
+        newEndTime: zonedTimeToUtc(newEndTime, COPENHAGEN_TIMEZONE).toISOString()
       });
       return response.data.data;
     } catch (error) {
