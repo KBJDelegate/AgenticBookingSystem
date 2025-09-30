@@ -74,10 +74,19 @@ class BookingApi {
    */
   async getAvailableSlots(serviceId: string, date: Date) {
     try {
+      // Format date as YYYY-MM-DD in local time (Copenhagen)
+      // The date picker gives us a Date object with the correct local date values
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      const dateString = `${year}-${month}-${day}`;
+
+      console.log('Fetching slots for date:', dateString, 'serviceId:', serviceId);
+
       const response = await this.api.get('/availability', {
         params: {
           serviceId,
-          date: utcToZonedTime(date, COPENHAGEN_TIMEZONE).toISOString().split('T')[0] // YYYY-MM-DD format in Copenhagen timezone
+          date: dateString
         },
         // Disable caching to prevent 304 responses
         headers: {

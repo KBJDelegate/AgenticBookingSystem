@@ -18,15 +18,23 @@ router.get('/', async (req: Request, res: Response, next: NextFunction): Promise
       return;
     }
 
-    const startDate = new Date(date as string);
-    const endDate = new Date(startDate);
-    endDate.setHours(23, 59, 59, 999);
+    logger.info(`Fetching availability for serviceId: ${serviceId}, date: ${date}`);
+
+    // Parse the date string (YYYY-MM-DD) as Copenhagen local time
+    // Date string format: "2025-09-30"
+    const [year, month, day] = (date as string).split('-').map(Number);
+    const startDate = new Date(year, month - 1, day, 0, 0, 0, 0);
+    const endDate = new Date(year, month - 1, day, 23, 59, 59, 999);
+
+    logger.info(`Parsed date range: ${startDate.toISOString()} to ${endDate.toISOString()}`);
 
     const slots = await graphApiService.getAvailableTimeSlots(
       serviceId as string,
       startDate,
       endDate
     );
+
+    logger.info(`Found ${slots.length} available slots`);
 
     res.json({
       success: true,

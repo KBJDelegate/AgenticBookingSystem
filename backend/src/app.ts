@@ -27,8 +27,10 @@ const corsOptions = {
     'http://localhost:5173',
     'http://localhost:5174',
     'http://localhost:5175',
+    'http://localhost:5176',
     'http://localhost:5177',
     'http://172.17.0.2:5175',
+    'http://172.17.0.2:5176',
     'http://172.17.0.2:5177',
     ...(process.env.FRONTEND_URL ? [process.env.FRONTEND_URL] : [])
   ],

@@ -45,14 +45,40 @@ export class BookingController {
 
       logger.info(`Creating booking for ${customerEmail}`);
 
-      // Step 1: Create booking in Microsoft Bookings
+      // Step 1: Get service details to determine the correct duration
+      const services = await graphApiService.getServices();
+      const service = services.find((s: any) => s.id === serviceId);
+
+      if (!service) {
+        res.status(400).json({
+          success: false,
+          error: 'Service not found'
+        });
+        return;
+      }
+
+      // Extract service duration from ISO 8601 format
+      // Examples: "PT30M" = 30 minutes, "PT1H" = 60 minutes, "PT1H30M" = 90 minutes
+      const duration = service.defaultDuration || 'PT30M';
+      const hours = duration.match(/(\d+)H/);
+      const minutes = duration.match(/(\d+)M/);
+      const serviceDurationMinutes = (hours ? parseInt(hours[1]) * 60 : 0) + (minutes ? parseInt(minutes[1]) : 0);
+
+      // Calculate the correct end time based on service duration
+      const startDateTime = new Date(startTime);
+      const endDateTime = new Date(startDateTime.getTime() + serviceDurationMinutes * 60 * 1000);
+
+      logger.info(`Service "${service.displayName}" duration: ${serviceDurationMinutes} minutes`);
+      logger.info(`Booking time: ${startDateTime.toISOString()} to ${endDateTime.toISOString()}`);
+
+      // Step 2: Create booking in Microsoft Bookings with correct duration
       const booking = await graphApiService.createBooking({
         customerName,
         customerEmail,
         customerPhone,
         serviceId,
-        start: new Date(startTime),
-        end: new Date(endTime),
+        start: startDateTime,
+        end: endDateTime,
         notes,
         isDigital: meetingType === 'digital'
       });
