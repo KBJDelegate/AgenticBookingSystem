@@ -112,6 +112,7 @@ const AdminDashboard: React.FC = () => {
   // Staff data
   const [allStaff, setAllStaff] = useState<StaffMember[]>([]);
   const [selectedStaffIds, setSelectedStaffIds] = useState<string[]>([]);
+  const [staffSelectOpen, setStaffSelectOpen] = useState(false);
 
   // Fetch all bookings (without pagination - we'll paginate client-side)
   const fetchBookings = async () => {
@@ -260,7 +261,7 @@ const AdminDashboard: React.FC = () => {
     try {
       const utcDate = parseISO(dateString);
       const copenhagenTime = utcToZonedTime(utcDate, COPENHAGEN_TIMEZONE);
-      return format(copenhagenTime, 'MMM dd, yyyy HH:mm') + ' CET/CEST';
+      return format(copenhagenTime, 'MMM dd, yyyy HH:mm');
     } catch {
       return dateString;
     }
@@ -690,9 +691,19 @@ const AdminDashboard: React.FC = () => {
             <InputLabel>Select Staff Members</InputLabel>
             <Select
               multiple
+              open={staffSelectOpen}
+              onOpen={() => setStaffSelectOpen(true)}
+              onClose={() => setStaffSelectOpen(false)}
               value={selectedStaffIds}
               onChange={(e) => setSelectedStaffIds(e.target.value as string[])}
               label="Select Staff Members"
+              MenuProps={{
+                PaperProps: {
+                  style: {
+                    maxHeight: 300,
+                  },
+                },
+              }}
               renderValue={(selected) => (
                 <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
                   {selected.map((value) => {
@@ -705,7 +716,11 @@ const AdminDashboard: React.FC = () => {
               )}
             >
               {allStaff.map((staff) => (
-                <MenuItem key={staff.id} value={staff.id}>
+                <MenuItem
+                  key={staff.id}
+                  value={staff.id}
+                  onClick={() => setStaffSelectOpen(false)}
+                >
                   {staff.name}
                 </MenuItem>
               ))}
