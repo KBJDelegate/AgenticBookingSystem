@@ -588,6 +588,8 @@ class GraphApiService {
       await this.initializeClient();
 
       // Build query parameters for Microsoft Graph API
+      // Note: We fetch ALL bookings and then filter/paginate in memory
+      // because we need to filter out past bookings after fetching
       let query = `/solutions/bookingBusinesses/${this.bookingBusinessId}/appointments`;
       const queryParams: string[] = [];
 
@@ -603,9 +605,8 @@ class GraphApiService {
         }
       }
 
-      if (filters.limit) {
-        queryParams.push(`$top=${filters.limit}`);
-      }
+      // Fetch a large number to ensure we get all bookings for proper pagination
+      queryParams.push(`$top=500`);
 
       if (queryParams.length > 0) {
         query += '?' + queryParams.join('&');

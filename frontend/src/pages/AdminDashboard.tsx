@@ -80,7 +80,7 @@ interface BookingStats {
 }
 
 const AdminDashboard: React.FC = () => {
-  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [allBookings, setAllBookings] = useState<Booking[]>([]); // Store all bookings
   const [stats, setStats] = useState<BookingStats | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -94,22 +94,21 @@ const AdminDashboard: React.FC = () => {
   // Pagination
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
-  const [totalBookings, setTotalBookings] = useState(0);
 
   // Dialog states
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
   const [viewDialogOpen, setViewDialogOpen] = useState(false);
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
 
-  // Fetch bookings with filters
+  // Fetch all bookings (without pagination - we'll paginate client-side)
   const fetchBookings = async () => {
     setLoading(true);
     setError(null);
 
     try {
       const params = new URLSearchParams({
-        page: (page + 1).toString(),
-        limit: rowsPerPage.toString()
+        page: '1',
+        limit: '500' // Fetch all bookings
       });
 
       if (startDate) params.append('startDate', startDate.toISOString());
@@ -121,8 +120,8 @@ const AdminDashboard: React.FC = () => {
       const data = await response.json();
 
       if (data.success) {
-        setBookings(data.data.bookings);
-        setTotalBookings(data.data.pagination.total);
+        setAllBookings(data.data.bookings);
+        setPage(0); // Reset to first page when data changes
       } else {
         setError('Failed to fetch bookings');
       }
@@ -172,6 +171,12 @@ const AdminDashboard: React.FC = () => {
     }
   };
 
+  // Client-side pagination - slice the bookings array
+  const paginatedBookings = allBookings.slice(
+    page * rowsPerPage,
+    page * rowsPerPage + rowsPerPage
+  );
+
   // Effects
   useEffect(() => {
     fetchStats();
@@ -179,7 +184,7 @@ const AdminDashboard: React.FC = () => {
 
   useEffect(() => {
     fetchBookings();
-  }, [page, rowsPerPage, startDate, endDate, statusFilter, emailFilter]);
+  }, [startDate, endDate, statusFilter, emailFilter]); // Removed page and rowsPerPage
 
   // Helper functions
   const getStatusColor = (status: string) => {
@@ -372,7 +377,7 @@ const AdminDashboard: React.FC = () => {
               </TableRow>
             </TableHead>
             <TableBody>
-              {bookings.map((booking) => (
+              {paginatedBookings.map((booking) => (
                 <TableRow key={booking.id} hover>
                   <TableCell>
                     <Box>
@@ -452,7 +457,7 @@ const AdminDashboard: React.FC = () => {
         </TableContainer>
         <TablePagination
           component="div"
-          count={totalBookings}
+          count={allBookings.length}
           page={page}
           onPageChange={(_, newPage) => setPage(newPage)}
           rowsPerPage={rowsPerPage}
