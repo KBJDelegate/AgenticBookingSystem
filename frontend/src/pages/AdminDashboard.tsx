@@ -38,7 +38,8 @@ import {
   LocationOn as LocationOnIcon,
   Email as EmailIcon,
   Phone as PhoneIcon,
-  CalendarToday as CalendarIcon
+  CalendarToday as CalendarIcon,
+  PersonAdd as PersonAddIcon
 } from '@mui/icons-material';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { format, parseISO } from 'date-fns';
@@ -46,6 +47,11 @@ import { utcToZonedTime } from 'date-fns-tz';
 
 // Copenhagen timezone constant
 const COPENHAGEN_TIMEZONE = 'Europe/Copenhagen';
+
+interface StaffMember {
+  id: string;
+  name: string;
+}
 
 interface Booking {
   id: string;
@@ -63,6 +69,8 @@ interface Booking {
   isOnline: boolean;
   createdDateTime: string;
   lastUpdatedDateTime: string;
+  staffMemberIds?: string[];
+  assignedStaff?: StaffMember[];
 }
 
 interface BookingStats {
@@ -99,6 +107,11 @@ const AdminDashboard: React.FC = () => {
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
   const [viewDialogOpen, setViewDialogOpen] = useState(false);
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
+  const [assignStaffDialogOpen, setAssignStaffDialogOpen] = useState(false);
+
+  // Staff data
+  const [allStaff, setAllStaff] = useState<StaffMember[]>([]);
+  const [selectedStaffIds, setSelectedStaffIds] = useState<string[]>([]);
 
   // Fetch all bookings (without pagination - we'll paginate client-side)
   const fetchBookings = async () => {
@@ -171,6 +184,52 @@ const AdminDashboard: React.FC = () => {
     }
   };
 
+  // Fetch staff members
+  const fetchStaff = async () => {
+    try {
+      const response = await fetch('/api/v1/bookings/staff');
+      const data = await response.json();
+      if (data.success) {
+        const staffMembers = data.data.map((staff: any) => ({
+          id: staff.id,
+          name: staff.displayName || staff.name || 'Unknown'
+        }));
+        setAllStaff(staffMembers);
+      }
+    } catch (err) {
+      console.error('Error fetching staff:', err);
+    }
+  };
+
+  // Assign staff to booking
+  const assignStaff = async (bookingId: string, staffIds: string[]) => {
+    try {
+      const response = await fetch(`/api/v1/admin/bookings/${bookingId}/assign-staff`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ staffMemberIds: staffIds })
+      });
+
+      if (response.ok) {
+        fetchBookings();
+        setAssignStaffDialogOpen(false);
+        setSelectedStaffIds([]);
+      } else {
+        setError('Failed to assign staff');
+      }
+    } catch (err) {
+      setError('Error assigning staff');
+      console.error(err);
+    }
+  };
+
+  // Open assign staff dialog
+  const openAssignStaffDialog = (booking: Booking) => {
+    setSelectedBooking(booking);
+    setSelectedStaffIds(booking.staffMemberIds || []);
+    setAssignStaffDialogOpen(true);
+  };
+
   // Client-side pagination - slice the bookings array
   const paginatedBookings = allBookings.slice(
     page * rowsPerPage,
@@ -180,6 +239,7 @@ const AdminDashboard: React.FC = () => {
   // Effects
   useEffect(() => {
     fetchStats();
+    fetchStaff();
   }, []);
 
   useEffect(() => {
@@ -373,6 +433,7 @@ const AdminDashboard: React.FC = () => {
                 <TableCell>Date & Time</TableCell>
                 <TableCell>Status</TableCell>
                 <TableCell>Type</TableCell>
+                <TableCell>Assigned Staff</TableCell>
                 <TableCell>Actions</TableCell>
               </TableRow>
             </TableHead>
@@ -426,6 +487,24 @@ const AdminDashboard: React.FC = () => {
                     )}
                   </TableCell>
                   <TableCell>
+                    {booking.assignedStaff && booking.assignedStaff.length > 0 ? (
+                      <Box display="flex" gap={0.5} flexWrap="wrap">
+                        {booking.assignedStaff.map((staff) => (
+                          <Chip
+                            key={staff.id}
+                            label={staff.name}
+                            size="small"
+                            variant="outlined"
+                          />
+                        ))}
+                      </Box>
+                    ) : (
+                      <Typography variant="body2" color="textSecondary">
+                        No staff assigned
+                      </Typography>
+                    )}
+                  </TableCell>
+                  <TableCell>
                     <Box display="flex" gap={1}>
                       <IconButton
                         size="small"
@@ -435,6 +514,14 @@ const AdminDashboard: React.FC = () => {
                         }}
                       >
                         <ViewIcon />
+                      </IconButton>
+                      <IconButton
+                        size="small"
+                        color="primary"
+                        onClick={() => openAssignStaffDialog(booking)}
+                        title="Assign Staff"
+                      >
+                        <PersonAddIcon />
                       </IconButton>
                       {booking.status !== 'cancelled' && (
                         <IconButton
@@ -475,9 +562,7 @@ const AdminDashboard: React.FC = () => {
         maxWidth="md"
         fullWidth
       >
-        <DialogTitle>
-          <Typography variant="h6">Booking Details</Typography>
-        </DialogTitle>
+        <DialogTitle>Booking Details</DialogTitle>
         <DialogContent>
           {selectedBooking && (
             <Grid container spacing={2}>
@@ -585,6 +670,56 @@ const AdminDashboard: React.FC = () => {
             variant="contained"
           >
             Yes, Cancel Booking
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Assign Staff Dialog */}
+      <Dialog
+        open={assignStaffDialogOpen}
+        onClose={() => setAssignStaffDialogOpen(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>Assign Staff to Booking</DialogTitle>
+        <DialogContent>
+          <DialogContentText sx={{ mb: 2 }}>
+            Assign staff members to this booking for {selectedBooking?.customerName}
+          </DialogContentText>
+          <FormControl fullWidth>
+            <InputLabel>Select Staff Members</InputLabel>
+            <Select
+              multiple
+              value={selectedStaffIds}
+              onChange={(e) => setSelectedStaffIds(e.target.value as string[])}
+              label="Select Staff Members"
+              renderValue={(selected) => (
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                  {selected.map((value) => {
+                    const staff = allStaff.find(s => s.id === value);
+                    return (
+                      <Chip key={value} label={staff?.name || value} size="small" />
+                    );
+                  })}
+                </Box>
+              )}
+            >
+              {allStaff.map((staff) => (
+                <MenuItem key={staff.id} value={staff.id}>
+                  {staff.name}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setAssignStaffDialogOpen(false)}>Cancel</Button>
+          <Button
+            onClick={() => selectedBooking && assignStaff(selectedBooking.id, selectedStaffIds)}
+            color="primary"
+            variant="contained"
+          >
+            Assign Staff
           </Button>
         </DialogActions>
       </Dialog>

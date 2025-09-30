@@ -332,6 +332,59 @@ export class BookingController {
       next(error);
     }
   }
+
+  /**
+   * Get all staff members
+   * GET /api/v1/staff
+   */
+  async getStaffMembers(_req: Request, res: Response, next: NextFunction) {
+    try {
+      logger.info('Getting staff members from Microsoft Bookings');
+
+      const staffMembers = await graphApiService.getStaffMembers();
+
+      res.json({
+        success: true,
+        data: staffMembers
+      });
+
+    } catch (error) {
+      logger.error('Error getting staff members:', error);
+      next(error);
+    }
+  }
+
+  /**
+   * Assign staff to a booking
+   * PUT /api/v1/admin/bookings/:id/assign-staff
+   */
+  async assignStaffToBooking(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { id } = req.params;
+      const { staffMemberIds } = req.body;
+
+      logger.info(`Assigning staff to booking ${id}:`, staffMemberIds);
+
+      if (!Array.isArray(staffMemberIds)) {
+        res.status(400).json({
+          success: false,
+          message: 'staffMemberIds must be an array'
+        });
+        return;
+      }
+
+      await graphApiService.assignStaffToBooking(id, staffMemberIds);
+
+      res.json({
+        success: true,
+        message: 'Staff assigned successfully'
+      });
+
+    } catch (error) {
+      logger.error('Error assigning staff to booking:', error);
+      next(error);
+    }
+  }
 }
 
 export default new BookingController();

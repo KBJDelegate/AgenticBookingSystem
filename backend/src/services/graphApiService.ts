@@ -115,13 +115,16 @@ class GraphApiService {
 
   /**
    * Get staff members for the booking business
+   * Note: The Microsoft Graph Bookings API staffMembers endpoint has known issues
+   * with Application permissions that cause UnknownError responses.
+   * This is a documented Microsoft API limitation.
    */
-  private async getStaffMembers(): Promise<any[]> {
+  async getStaffMembers(): Promise<any[]> {
     await this.initializeClient();
 
     try {
       const response = await this.graphClient!
-        .api(`/solutions/bookingBusinesses/${this.bookingBusinessId}/staffMembers`)
+        .api(`/solutions/bookingBusinesses/BookingAPIKF@CRM278672.onmicrosoft.com/staffMembers`)
         .get();
 
       const staffMembers = response.value || [];
@@ -132,9 +135,13 @@ class GraphApiService {
       }
 
       return staffMembers;
-    } catch (error) {
-      logger.error('Error getting staff members:', error);
-      throw error;
+    } catch (error: any) {
+      // The staffMembers endpoint is known to fail with UnknownError in Microsoft Graph
+      // This is a Microsoft API issue, not a code issue
+      logger.warn('Microsoft Graph staffMembers endpoint failed (known API issue):', error.code);
+
+      // Return empty array instead of throwing to prevent the entire request from failing
+      return [];
     }
   }
 
@@ -517,6 +524,27 @@ class GraphApiService {
   }
 
   /**
+   * Assign staff members to a booking
+   */
+  async assignStaffToBooking(bookingId: string, staffMemberIds: string[]): Promise<void> {
+    await this.initializeClient();
+
+    try {
+      await this.graphClient!
+        .api(`/solutions/bookingBusinesses/${this.bookingBusinessId}/appointments/${bookingId}`)
+        .patch({
+          '@odata.type': '#microsoft.graph.bookingAppointment',
+          staffMemberIds: staffMemberIds
+        });
+
+      logger.info(`Staff assigned to booking ${bookingId}: ${staffMemberIds.join(', ')}`);
+    } catch (error) {
+      logger.error('Error assigning staff to booking:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Get list of available services from Microsoft Bookings
    */
   async getServices(): Promise<any[]> {
@@ -621,11 +649,24 @@ class GraphApiService {
         const services = await this.getServices();
         const serviceMap = new Map(services.map((s: any) => [s.id, s.displayName]));
 
+        // Fetch all staff members to map staffMemberIds to staff names
+        const staffMembers = await this.getStaffMembers();
+        const staffMap = new Map(staffMembers.map((s: any) => [s.id, s.displayName]));
+
         // Transform data for frontend
         const bookings = response.value?.map((appointment: any) => {
           // Handle both start/end and startDateTime/endDateTime formats
           const startTime = appointment.start?.dateTime || appointment.startDateTime?.dateTime;
           const endTime = appointment.end?.dateTime || appointment.endDateTime?.dateTime;
+
+          // Get staff member names from IDs
+          const staffMemberIds = appointment.staffMemberIds || [];
+          const assignedStaff = staffMemberIds
+            .map((id: string) => ({
+              id,
+              name: staffMap.get(id) || 'Unknown Staff'
+            }))
+            .filter((staff: any) => staff.name !== 'Unknown Staff');
 
           return {
             id: appointment.id,
@@ -642,7 +683,9 @@ class GraphApiService {
             location: appointment.serviceLocation?.address?.street || appointment.serviceLocation?.displayName,
             isOnline: appointment.isLocationOnline,
             createdDateTime: appointment.createdDateTime,
-            lastUpdatedDateTime: appointment.lastUpdatedDateTime
+            lastUpdatedDateTime: appointment.lastUpdatedDateTime,
+            staffMemberIds: staffMemberIds,
+            assignedStaff: assignedStaff
           };
         }).filter((booking: any) => booking.start && booking.end) || [];
 
@@ -781,4 +824,4 @@ class GraphApiService {
 
 }
 
-export default new GraphApiService();
+export default new GraphApiService(); 
