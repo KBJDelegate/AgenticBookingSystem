@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { checkAvailability } from '@/lib/availability/checker';
 import { getBrandById, getEmployeeById } from '@/lib/config/settings';
-import { getBookingServices } from '@/lib/bookings/service';
+import { getBookingServices, getBookingBusiness } from '@/lib/bookings/service';
 import { z } from 'zod';
 import { addMinutes } from 'date-fns';
+import { toZonedTime, fromZonedTime } from 'date-fns-tz';
 
 const availabilitySchema = z.object({
   brandId: z.string(),
@@ -65,50 +66,98 @@ export async function POST(request: NextRequest) {
       durationMinutes = (hours * 60) + minutes;
     }
 
+    // Fetch business hours from MS Bookings
+    const bookingBusiness = await getBookingBusiness(brand.msBookingsBusinessId);
+    const businessHours = bookingBusiness.businessHours || [];
+
     console.log('Checking availability across THREE calendars:');
     console.log(`  1. Service Calendar: ${brand.msBookingsBusinessId} (defines available time windows)`);
     console.log(`  2. Brand Calendar: ${brand.calendarId} (brand availability)`);
     console.log(`  3. Employee Calendar: ${employee.primaryCalendarId} (employee availability)`);
     console.log(`  Service Duration: ${durationMinutes} minutes`);
+    console.log(`  Business Hours:`, JSON.stringify(businessHours, null, 2));
 
-    // Generate time slots and check availability for each
+    // Helper function to parse time string like "10:00:00.0000000" to hours and minutes
+    const parseTimeOfDay = (timeStr: string): { hours: number; minutes: number } => {
+      const parts = timeStr.split(':');
+      return {
+        hours: parseInt(parts[0]),
+        minutes: parseInt(parts[1])
+      };
+    };
+
+    // Helper function to get day name from date
+    const getDayName = (date: Date): string => {
+      const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+      return days[date.getDay()];
+    };
+
+    // Use Copenhagen timezone (handles CET/CEST automatically)
+    const timezone = 'Europe/Copenhagen';
+
+    // Generate time slots based on business hours and check availability for each
     const slots = [];
     const currentDate = new Date(startDate);
 
     while (currentDate < endDate) {
-      // Working hours: 9 AM to 5 PM
-      currentDate.setHours(9, 0, 0, 0);
-      const endOfDay = new Date(currentDate);
-      endOfDay.setHours(17, 0, 0, 0);
+      // Convert to Copenhagen timezone to get the correct day
+      const localDate = toZonedTime(currentDate, timezone);
+      const dayName = getDayName(localDate);
 
-      while (currentDate < endOfDay) {
-        const slotStart = new Date(currentDate);
-        const slotEnd = addMinutes(slotStart, durationMinutes);
+      // Find business hours for this day of the week
+      const dayBusinessHours = businessHours.find(bh => bh.day === dayName);
 
-        if (slotEnd <= endOfDay) {
-          // Check availability across all three calendars:
-          // 1. Service calendar - defines when this service can be booked
-          // 2. Brand calendar - is the brand/department available?
-          // 3. Employee calendar - is the staff member free?
-          const isAvailable = await checkAvailability(
-            brand.msBookingsBusinessId,  // Service calendar (MS Bookings business)
-            brand.calendarId,  // Brand calendar
-            employee.primaryCalendarId,  // Employee calendar
-            slotStart,
-            slotEnd
-          );
+      if (dayBusinessHours && dayBusinessHours.timeSlots && dayBusinessHours.timeSlots.length > 0) {
+        // Process each time slot for this day
+        for (const timeSlot of dayBusinessHours.timeSlots) {
+          const startTime = parseTimeOfDay(timeSlot.startTime);
+          const endTime = parseTimeOfDay(timeSlot.endTime);
 
-          if (isAvailable) {
-            slots.push({
-              start: slotStart.toISOString(),
-              end: slotEnd.toISOString(),
-            });
+          // Create date in Copenhagen timezone
+          const slotDate = new Date(localDate);
+          slotDate.setHours(startTime.hours, startTime.minutes, 0, 0);
+
+          const slotEndDate = new Date(localDate);
+          slotEndDate.setHours(endTime.hours, endTime.minutes, 0, 0);
+
+          // Convert to UTC for API calls
+          let slotDateUTC = fromZonedTime(slotDate, timezone);
+          const slotEndDateUTC = fromZonedTime(slotEndDate, timezone);
+
+          // Generate appointment slots within this business hour window
+          while (slotDateUTC < slotEndDateUTC) {
+            const appointmentStart = new Date(slotDateUTC);
+            const appointmentEnd = addMinutes(appointmentStart, durationMinutes);
+
+            // Only create slot if it fits within the business hours window
+            if (appointmentEnd <= slotEndDateUTC) {
+              // Check availability across all three calendars:
+              // 1. Service calendar - defines when this service can be booked
+              // 2. Brand calendar - is the brand/department available?
+              // 3. Employee calendar - is the staff member free?
+              const isAvailable = await checkAvailability(
+                brand.msBookingsBusinessId,  // Service calendar (MS Bookings business)
+                brand.calendarId,  // Brand calendar
+                employee.primaryCalendarId,  // Employee calendar
+                appointmentStart,
+                appointmentEnd
+              );
+
+              if (isAvailable) {
+                slots.push({
+                  start: appointmentStart.toISOString(),
+                  end: appointmentEnd.toISOString(),
+                });
+              }
+            }
+
+            // Move to next slot (30-minute intervals)
+            slotDateUTC = addMinutes(slotDateUTC, 30);
           }
         }
-
-        currentDate.setMinutes(currentDate.getMinutes() + 30);
       }
 
+      // Move to next day
       currentDate.setDate(currentDate.getDate() + 1);
       currentDate.setHours(0, 0, 0, 0);
     }

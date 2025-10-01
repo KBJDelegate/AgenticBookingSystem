@@ -71,12 +71,12 @@ export async function POST(request: NextRequest) {
     }
 
     // Find the MS Bookings staff member ID for this employee
-    const staffMemberId = await findStaffMemberIdByEmail(
+    const employeeStaffMemberId = await findStaffMemberIdByEmail(
       brand.msBookingsBusinessId,
       employee.email
     );
 
-    if (!staffMemberId) {
+    if (!employeeStaffMemberId) {
       console.error(`Could not find MS Bookings staff member for ${employee.email}`);
       return NextResponse.json(
         { error: 'Employee not found in MS Bookings system' },
@@ -84,14 +84,33 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log(`Found MS Bookings staff member ID: ${staffMemberId} for ${employee.name}`);
+    console.log(`Found MS Bookings staff member ID: ${employeeStaffMemberId} for ${employee.name}`);
+
+    // Find the MS Bookings staff member ID for the brand calendar
+    const brandStaffMemberId = await findStaffMemberIdByEmail(
+      brand.msBookingsBusinessId,
+      brand.calendarId
+    );
+
+    if (brandStaffMemberId) {
+      console.log(`Found MS Bookings staff member ID: ${brandStaffMemberId} for brand ${brand.name}`);
+    } else {
+      console.warn(`Brand calendar ${brand.calendarId} is not a staff member in MS Bookings - event will not appear in brand calendar automatically`);
+    }
 
     const client = getGraphClient();
+
+    // Build the staffMemberIds array - include both employee and brand calendar if available
+    const staffMemberIds = [employeeStaffMemberId];
+    if (brandStaffMemberId) {
+      staffMemberIds.push(brandStaffMemberId);
+      console.log(`✓ Including both employee and brand calendar as staff members`);
+    }
 
     // Create the MS Bookings appointment with staffMemberIds
     const bookingAppointment = {
       serviceId: data.serviceId,
-      staffMemberIds: [staffMemberId],
+      staffMemberIds: staffMemberIds,
       startDateTime: {
         dateTime: startTime.toISOString(),
         timeZone: 'UTC',
@@ -126,7 +145,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Also create calendar events for visibility
+    // MS Bookings automatically creates events in staff member calendars,
+    // so we only need to create an event in the brand calendar for visibility
     const event = {
       subject: `${service.displayName} - ${data.customerName}`,
       body: {
@@ -159,38 +179,19 @@ export async function POST(request: NextRequest) {
       ],
     };
 
-    const createdEvents = [{ calendar: 'msBookings', eventId: msBookingsAppointment.id }];
-
-    // 1. Create event in employee's primary calendar
-    try {
-      const employeeEvent = await client
-        .api(`/users/${employee.primaryCalendarId}/calendar/events`)
-        .post(event);
-      createdEvents.push({ calendar: 'employee', eventId: employeeEvent.id });
-      console.log(`✓ Created event in employee calendar: ${employeeEvent.id}`);
-    } catch (error) {
-      console.error('✗ Failed to create event in employee calendar:', error);
-    }
-
-    // 2. Create event in the brand calendar
-    try {
-      const brandEvent = await client
-        .api(`/users/${brand.calendarId}/calendar/events`)
-        .post({
-          ...event,
-          showAs: 'busy',
-        });
-      createdEvents.push({ calendar: 'brand', eventId: brandEvent.id });
-      console.log(`✓ Created event in brand calendar: ${brandEvent.id}`);
-    } catch (error) {
-      console.error('✗ Failed to create event in brand calendar:', error);
-    }
+    // MS Bookings automatically creates events in all staff member calendars
+    // Since we included both employee and brand calendar as staff members,
+    // events will appear in both calendars automatically with perfect sync
+    console.log('✓ MS Bookings will automatically create events in all staff member calendars');
+    console.log('✓ Cancellations will automatically sync to all staff member calendars');
 
     return NextResponse.json({
       success: true,
       bookingId: msBookingsAppointment.id,
-      events: createdEvents,
-      message: 'Booking created successfully with staff assignment',
+      staffMembers: staffMemberIds.length,
+      message: brandStaffMemberId
+        ? 'Booking created - events will appear in both employee and brand calendars'
+        : 'Booking created in employee calendar only (brand calendar not configured as staff member)',
     });
   } catch (error) {
     console.error('Error creating booking:', error);

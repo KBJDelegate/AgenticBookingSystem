@@ -61,7 +61,9 @@
       "Bash(git checkout:*)",
       "Bash(git stash:*)",
       "Bash(gh pr create:*)",
-      "Bash(git pull:*)"
+      "Bash(git pull:*)",
+      "Bash(chmod:*)",
+      "Bash(/dev/null)"
     ]
   },
   "enableAllProjectMcpServers": true,

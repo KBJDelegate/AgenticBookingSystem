@@ -1,5 +1,15 @@
 import { getGraphClient } from '@/lib/graph/client';
 
+export interface BookingWorkTimeSlot {
+  startTime: string; // e.g., "10:00:00.0000000"
+  endTime: string;   // e.g., "14:00:00.0000000"
+}
+
+export interface BookingWorkHours {
+  day: 'sunday' | 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday';
+  timeSlots: BookingWorkTimeSlot[];
+}
+
 export interface BookingBusiness {
   id: string;
   displayName: string;
@@ -14,6 +24,7 @@ export interface BookingBusiness {
   };
   webSiteUrl?: string;
   defaultCurrencyIso?: string;
+  businessHours?: BookingWorkHours[];
 }
 
 export interface BookingService {
@@ -75,7 +86,7 @@ export async function getBookingBusinesses(): Promise<BookingBusiness[]> {
 }
 
 /**
- * Get a specific booking business by ID
+ * Get a specific booking business by ID including business hours
  */
 export async function getBookingBusiness(businessId: string): Promise<BookingBusiness> {
   const client = getGraphClient();
@@ -83,6 +94,7 @@ export async function getBookingBusiness(businessId: string): Promise<BookingBus
   try {
     const response = await client
       .api(`/solutions/bookingBusinesses/${businessId}`)
+      .select('id,displayName,email,phone,address,webSiteUrl,defaultCurrencyIso,businessHours')
       .get();
 
     return response;
@@ -177,6 +189,54 @@ export async function createBookingAppointment(
     return response;
   } catch (error) {
     console.error(`Error creating appointment for business ${businessId}:`, error);
+    throw error;
+  }
+}
+
+/**
+ * Cancel a booking appointment
+ * https://learn.microsoft.com/en-us/graph/api/bookingappointment-cancel
+ */
+export async function cancelBookingAppointment(
+  businessId: string,
+  appointmentId: string,
+  cancellationMessage?: string
+): Promise<void> {
+  const client = getGraphClient();
+
+  try {
+    await client
+      .api(`/solutions/bookingBusinesses/${businessId}/appointments/${appointmentId}/cancel`)
+      .post({
+        cancellationMessage: cancellationMessage || 'Appointment cancelled'
+      });
+  } catch (error) {
+    console.error(`Error cancelling appointment ${appointmentId}:`, error);
+    throw error;
+  }
+}
+
+/**
+ * Get a specific booking appointment
+ * https://learn.microsoft.com/en-us/graph/api/bookingappointment-get
+ */
+export async function getBookingAppointment(
+  businessId: string,
+  appointmentId: string
+): Promise<BookingAppointment | null> {
+  const client = getGraphClient();
+
+  try {
+    const response = await client
+      .api(`/solutions/bookingBusinesses/${businessId}/appointments/${appointmentId}`)
+      .get();
+    return response;
+  } catch (error: any) {
+    // If appointment doesn't exist (deleted/cancelled), return null
+    if (error.statusCode === 404) {
+      return null;
+    }
+    console.error(`Error fetching appointment ${appointmentId}:`, error);
     throw error;
   }
 }
