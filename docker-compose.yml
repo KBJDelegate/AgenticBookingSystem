@@ -1,52 +1,41 @@
 version: '3.8'
 
 services:
-  # Backend API Service
-  backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    container_name: kf-booking-backend
+  # MySQL Database
+  mysql:
+    image: mysql:8.0
+    container_name: kf-booking-mysql
     ports:
-      - "3001:3001"
+      - "3306:3306"
     environment:
-      - NODE_ENV=production
-      - PORT=3001
-    env_file:
-      - ./backend/.env
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: kf_booking_system
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./app/lib/db/schema.sql:/docker-entrypoint-initdb.d/schema.sql
     networks:
       - booking-network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3001/api/v1/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
-  # Frontend React App
-  frontend:
+  # Next.js App
+  nextjs:
     build:
-      context: ./frontend
+      context: ./app
       dockerfile: Dockerfile
-    container_name: kf-booking-frontend
+    container_name: kf-booking-nextjs
     ports:
-      - "3000:80"
+      - "3000:3000"
     environment:
-      - VITE_API_URL=http://localhost:3001/api/v1
+      - NODE_ENV=production
+    env_file:
+      - ./app/.env.local
     depends_on:
-      - backend
-    networks:
-      - booking-network
-    restart: unless-stopped
-
-  # Redis Cache (optional, for session storage and caching)
-  redis:
-    image: redis:7-alpine
-    container_name: kf-booking-redis
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis-data:/data
+      - mysql
     networks:
       - booking-network
     restart: unless-stopped
@@ -56,4 +45,4 @@ networks:
     driver: bridge
 
 volumes:
-  redis-data:
+  mysql-data:

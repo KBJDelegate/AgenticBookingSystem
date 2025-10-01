@@ -5,9 +5,8 @@ yarn-debug.log*
 yarn-error.log*
 
 # Build outputs
-/backend/dist/
-/frontend/dist/
-/frontend/build/
+/app/.next/
+/app/out/
 
 # Environment variables
 .env

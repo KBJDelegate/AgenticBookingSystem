@@ -1,0 +1,20 @@
+{
+  "brands": [
+    {
+      "id": "nexttest",
+      "name": "Next Test Brand",
+      "domain": "nexttest.com",
+      "calendarId": "nexttest@CRM278672.onmicrosoft.com",
+      "msBookingsBusinessId": "BookingAPIKF@CRM278672.onmicrosoft.com"
+    }
+  ],
+  "employees": [
+    {
+      "id": "admin",
+      "name": "System Administrator",
+      "email": "admin@CRM278672.onmicrosoft.com",
+      "primaryCalendarId": "admin@CRM278672.onmicrosoft.com",
+      "brands": ["nexttest"]
+    }
+  ]
+}

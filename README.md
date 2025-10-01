@@ -10,57 +10,37 @@ A modern web-based booking system that allows insurance customers to schedule me
 │                        Customer Browser                      │
 │                                                              │
 │  ┌─────────────────────────────────────────────────────┐   │
-│  │              React.js Frontend Application           │   │
+│  │           Next.js Full-Stack Application             │   │
 │  │                                                      │   │
 │  │  • Booking Form    • Calendar View                  │   │
-│  │  • Document Upload • Confirmation Page              │   │
+│  │  • API Routes      • Server Components              │   │
 │  └──────────────────────┬───────────────────────────────┘   │
 └────────────────────────┼────────────────────────────────────┘
-                         │ HTTPS/REST API
+                         │ Internal API Routes
                          ▼
-┌─────────────────────────────────────────────────────────────┐
-│                 Node.js/Express Backend API                  │
-│                                                              │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐     │
-│  │   Routes     │  │  Controllers │  │   Services   │     │
-│  │              │──│              │──│              │     │
-│  │ • /booking   │  │ • Validation │  │ • Business   │     │
-│  │ • /available │  │ • Auth       │  │   Logic      │     │
-│  └──────────────┘  └──────────────┘  └──────┬───────┘     │
-└────────────────────────────────────────────┼───────────────┘
-                                             │
-                         ┌───────────────────┼───────────────┐
-                         ▼                   ▼               ▼
-         ┌──────────────────────┐ ┌──────────────┐ ┌──────────────┐
-         │ Microsoft Graph API   │ │ Azure Blob   │ │ SMS Provider │
-         │                       │ │  Storage     │ │  (Twilio)    │
-         │ • Bookings API       │ │              │ │              │
-         │ • Calendar API       │ │ • Document   │ │ • SMS        │
-         │ • Teams API          │ │   Storage    │ │   Delivery   │
-         │ • Mail API           │ │              │ │              │
-         └──────────────────────┘ └──────────────┘ └──────────────┘
+         ┌──────────────────────┐ ┌──────────────┐
+         │ Microsoft Graph API   │ │ MySQL        │
+         │                       │ │  Database    │
+         │ • Bookings API       │ │              │
+         │ • Calendar API       │ │ • Bookings   │
+         │ • Teams API          │ │ • Users      │
+         │ • Mail API           │ │              │
+         └──────────────────────┘ └──────────────┘
 ```
-
 
 ## Technical Stack
 
-### Frontend
-- **React.js** - UI framework for interactive components
-- **TypeScript** - Type safety and better developer experience
-- **Redux Toolkit** - State management for complex data flows
-- **Material-UI** - Professional UI components
-- **Vite** - Fast build tool and dev server
-
-### Backend
-- **Node.js** - JavaScript runtime
-- **Express.js** - Web application framework
+### Frontend & Backend
+- **Next.js 15** - React framework with App Router (Server & Client Components)
 - **TypeScript** - Type safety across the stack
-- **Microsoft Graph SDK** - Official SDK for Microsoft 365 integration
-- **Passport.js** - Authentication middleware
+- **React 19** - UI library
+- **Tailwind CSS** - Utility-first CSS framework
+- **Radix UI** - Accessible component primitives
 
-### Infrastructure
+### Database & Infrastructure
+- **MySQL 8.0** - Relational database
+- **Microsoft Graph SDK** - Official SDK for Microsoft 365 integration
 - **Azure AD** - Identity and access management
-- **Microsoft Bookings** - Calendar and appointment management
 - **Docker** - Containerization for easy deployment
 
 ## How It Works
@@ -72,48 +52,43 @@ Customer Journey:
 2. Selects meeting type (Digital/Physical)
 3. Chooses from available time slots
 4. Enters personal information
-5. Uploads relevant documents (optional)
-6. Submits booking request
-7. Receives instant confirmation
+5. Submits booking request
+6. Receives instant confirmation
 ```
 
-### 2. Backend Processing
+### 2. System Processing
 ```
-System Processing:
-1. Validates customer input
+Next.js Processing:
+1. Validates customer input (Server-side)
 2. Checks availability via Microsoft Graph API
 3. Creates booking in Microsoft Bookings
-4. Generates Teams meeting (if digital)
-5. Stores documents in Azure Blob
+4. Stores booking in MySQL database
+5. Generates Teams meeting (if digital)
 6. Sends email confirmation
-7. Sends SMS notification
-8. Updates representative's calendar
+7. Updates representative's calendar
 ```
 
 ### 3. Data Flow
-- **Availability Check**: Backend → Graph API → Microsoft Bookings → Response
-- **Booking Creation**: Frontend → Backend → Graph API → Bookings/Calendar
-- **Notifications**: Backend → Email Service + SMS Provider
-- **Document Storage**: Frontend → Backend → Azure Blob Storage
+- **Availability Check**: Client → Next.js API Route → Graph API → Microsoft Bookings
+- **Booking Creation**: Client → Next.js API Route → MySQL + Graph API
+- **Notifications**: Next.js API Route → Email Service
 
 ## Project Structure
 ```
 KFInsuranceBookingSystem/
-├── backend/                 # Node.js API server
-│   ├── src/
-│   │   ├── controllers/    # Request handlers
-│   │   ├── services/       # Business logic
-│   │   ├── middleware/     # Auth, validation
-│   │   └── config/         # Configuration
+├── app/                     # Next.js application
+│   ├── app/                # App Router directory
+│   │   ├── api/           # API routes
+│   │   ├── booking/       # Booking pages
+│   │   ├── layout.tsx     # Root layout
+│   │   └── page.tsx       # Home page
+│   ├── components/        # React components
+│   ├── lib/              # Utilities & services
+│   │   ├── db/           # Database utilities
+│   │   └── auth/         # Azure AD auth
+│   ├── .env.local        # Environment variables
 │   └── package.json
-├── frontend/               # React application
-│   ├── src/
-│   │   ├── components/    # UI components
-│   │   ├── pages/         # Page components
-│   │   ├── services/      # API calls
-│   │   └── store/         # Redux state
-│   └── package.json
-└── docker-compose.yml      # Container orchestration
+└── docker-compose.yml     # Container orchestration
 ```
 
 ## Getting Started
@@ -122,35 +97,36 @@ KFInsuranceBookingSystem/
 - Node.js 18+ and npm
 - Azure AD tenant with admin access
 - Microsoft 365 Business with Bookings enabled
+- Docker (optional)
 
 ### Installation
 ```bash
 # Clone the repository
 git clone [repository-url]
 
-# Install backend dependencies
-cd backend
-npm install
-
-# Install frontend dependencies
-cd ../frontend
+# Install dependencies
+cd app
 npm install
 ```
 
 ### Configuration
 1. Set up Azure AD App Registration
 2. Configure Microsoft Bookings business
-3. Set environment variables (see .env.example)
-4. Configure brand settings
+3. Copy `.env.example` to `.env.local` and fill in:
+   - Azure AD credentials (tenant ID, client ID, client secret)
+   - MySQL database connection
+4. Set up MySQL database (use Docker or local MySQL)
 
 ### Running the Application
 ```bash
-# Start backend (from backend/ directory)
+# Start MySQL with Docker
+docker-compose up mysql -d
+
+# Start Next.js development server (from app/ directory)
 npm run dev
 
-# Start frontend (from frontend/ directory)
-npm run dev
-
-# Or use Docker
+# Or use Docker for everything
 docker-compose up
 ```
+
+The application will be available at http://localhost:3000

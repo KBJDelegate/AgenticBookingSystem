@@ -41,7 +41,6 @@
 	"mounts": [
 		"source=claude-code-bashhistory,target=/commandhistory,type=volume",
 		"source=claude-code-config,target=/home/vscode/.claude,type=volume",
-		"source=${localEnv:HOME}${localEnv:USERPROFILE}/.gitconfig,target=/home/vscode/.gitconfig,type=bind,consistency=cached",
 		"source=playwright-browsers,target=/home/vscode/.playwright,type=volume"
 	],
 	"remoteEnv": {
