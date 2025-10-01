@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -12,7 +12,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { format } from 'date-fns';
+import { Calendar } from '@/components/ui/calendar';
+import { format, startOfDay, isSameDay } from 'date-fns';
 
 interface Service {
   id: string;
@@ -50,6 +51,7 @@ export default function BookingPage() {
   const [selectedBrand, setSelectedBrand] = useState('');
   const [selectedEmployee, setSelectedEmployee] = useState('');
   const [selectedSlot, setSelectedSlot] = useState<TimeSlot | null>(null);
+  const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
   const [customerName, setCustomerName] = useState('');
   const [customerEmail, setCustomerEmail] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
@@ -123,6 +125,19 @@ export default function BookingPage() {
       setLoading(false);
     }
   };
+
+  // Get unique dates that have availability
+  const availableDates = useMemo(() => {
+    const dates = slots.map(slot => startOfDay(new Date(slot.start)));
+    const uniqueDates = Array.from(new Set(dates.map(d => d.getTime()))).map(t => new Date(t));
+    return uniqueDates;
+  }, [slots]);
+
+  // Get slots for the selected date
+  const slotsForSelectedDate = useMemo(() => {
+    if (!selectedDate) return [];
+    return slots.filter(slot => isSameDay(new Date(slot.start), selectedDate));
+  }, [slots, selectedDate]);
 
   const createBooking = async () => {
     if (!selectedSlot) return;
@@ -243,31 +258,77 @@ export default function BookingPage() {
         )}
 
         {step === 2 && (
-          <Card>
-            <CardHeader>
-              <CardTitle>Select Time</CardTitle>
-              <CardDescription>Choose an available time slot</CardDescription>
+          <Card className="shadow-lg">
+            <CardHeader className="space-y-1">
+              <CardTitle className="text-2xl">Select Date & Time</CardTitle>
+              <CardDescription>Choose an available date from the calendar below</CardDescription>
             </CardHeader>
-            <CardContent>
-              <div className="space-y-2 max-h-96 overflow-y-auto">
-                {slots.length === 0 ? (
-                  <p className="text-gray-500">No available slots found</p>
-                ) : (
-                  slots.slice(0, 20).map((slot, index) => (
-                    <Button
-                      key={index}
-                      variant={selectedSlot === slot ? 'default' : 'outline'}
-                      className="w-full justify-start"
-                      onClick={() => {
-                        setSelectedSlot(slot);
-                        setStep(3);
+            <CardContent className="space-y-8">
+              {slots.length === 0 ? (
+                <div className="text-center py-12">
+                  <p className="text-muted-foreground text-lg">No available slots found</p>
+                  <p className="text-sm text-muted-foreground mt-2">Please try different selections</p>
+                </div>
+              ) : (
+                <>
+                  <div className="flex justify-center p-4 bg-gradient-to-br from-primary/5 to-primary/10 rounded-lg">
+                    <Calendar
+                      mode="single"
+                      selected={selectedDate}
+                      onSelect={setSelectedDate}
+                      disabled={(date) => {
+                        if (date < startOfDay(new Date())) return true;
+                        return !availableDates.some(availDate => isSameDay(availDate, date));
                       }}
-                    >
-                      {format(new Date(slot.start), 'EEEE, MMMM d, yyyy - h:mm a')}
-                    </Button>
-                  ))
-                )}
-              </div>
+                      modifiers={{
+                        available: availableDates,
+                      }}
+                      modifiersClassNames={{
+                        available: 'bg-primary text-primary-foreground hover:bg-primary/90 font-semibold rounded-md',
+                      }}
+                      className="rounded-md border-0 shadow-sm"
+                    />
+                  </div>
+
+                  {selectedDate && (
+                    <div className="space-y-4 animate-in fade-in-50 duration-300">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <h3 className="text-lg font-semibold">
+                            {format(selectedDate, 'EEEE, MMMM d')}
+                          </h3>
+                          <p className="text-sm text-muted-foreground">
+                            {slotsForSelectedDate.length} time slots available
+                          </p>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-3 sm:grid-cols-4 gap-3 max-h-64 overflow-y-auto p-1">
+                        {slotsForSelectedDate.map((slot, index) => (
+                          <Button
+                            key={index}
+                            variant={selectedSlot === slot ? 'default' : 'outline'}
+                            className="h-12 font-medium transition-all hover:scale-105"
+                            onClick={() => {
+                              setSelectedSlot(slot);
+                              setStep(3);
+                            }}
+                          >
+                            {format(new Date(slot.start), 'h:mm a')}
+                          </Button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {!selectedDate && (
+                    <div className="text-center py-6">
+                      <p className="text-sm text-muted-foreground">
+                        Select a date from the calendar to see available time slots
+                      </p>
+                    </div>
+                  )}
+                </>
+              )}
               <Button variant="ghost" onClick={() => setStep(1)} className="w-full mt-4">
                 Back
               </Button>

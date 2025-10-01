@@ -2,10 +2,17 @@
   "brands": [
     {
       "id": "nexttest",
-      "name": "Next Test Brand",
-      "domain": "nexttest.com",
+      "name": "Next Test",
+      "domain": "CRM278672.onmicrosoft.com",
       "calendarId": "nexttest@CRM278672.onmicrosoft.com",
       "msBookingsBusinessId": "BookingAPIKF@CRM278672.onmicrosoft.com"
+    },
+    {
+      "id": "insuranceswag",
+      "name": "Insurance Swag",
+      "domain": "CRM278672.onmicrosoft.com",
+      "calendarId": "insuranceswag@CRM278672.onmicrosoft.com",
+      "msBookingsBusinessId": "BookingInsurance@CRM278672.onmicrosoft.com"
     }
   ],
   "employees": [
@@ -14,7 +21,14 @@
       "name": "System Administrator",
       "email": "admin@CRM278672.onmicrosoft.com",
       "primaryCalendarId": "admin@CRM278672.onmicrosoft.com",
-      "brands": ["nexttest"]
+      "brands": ["nexttest", "insuranceswag"]
+    },
+    {
+      "id": "alans",
+      "name": "Alan Steiner",
+      "email": "alans@CRM278672.OnMicrosoft.com",
+      "primaryCalendarId": "alans@CRM278672.OnMicrosoft.com",
+      "brands": ["insuranceswag"]
     }
   ]
 }

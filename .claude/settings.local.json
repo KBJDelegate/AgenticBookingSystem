@@ -63,7 +63,8 @@
       "Bash(gh pr create:*)",
       "Bash(git pull:*)",
       "Bash(chmod:*)",
-      "Bash(/dev/null)"
+      "Bash(/dev/null)",
+      "Bash(npx tsx:*)"
     ]
   },
   "enableAllProjectMcpServers": true,
