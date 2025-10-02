@@ -23,7 +23,7 @@
 	// }
 	// Use 'postCreateCommand' to run commands after the container is created.
 	"onCreateCommand": "curl -sSL https://aspire.dev/install.sh | bash",
-	"postCreateCommand": "npm i -g @anthropic-ai/claude-code",
+	"postCreateCommand": "sudo npm i -g @anthropic-ai/claude-code",
 	"postStartCommand": "dotnet dev-certs https --trust",
 	"customizations": {
 		"vscode": {
