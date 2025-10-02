@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
+import { useParams } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -33,14 +34,23 @@ interface TimeSlot {
   end: string;
 }
 
-const BRAND_ID = 'insuranceswag';
+interface Brand {
+  id: string;
+  name: string;
+  description?: string;
+}
 
-export default function InsuranceSwagBookingPage() {
+export default function BrandBookingPage() {
+  const params = useParams();
+  const brandId = params.brandId as string;
+
   const [step, setStep] = useState(1);
+  const [brand, setBrand] = useState<Brand | null>(null);
   const [services, setServices] = useState<Service[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [slots, setSlots] = useState<TimeSlot[]>([]);
   const [loading, setLoading] = useState(false);
+  const [notFound, setNotFound] = useState(false);
 
   const [selectedService, setSelectedService] = useState('');
   const [selectedEmployee, setSelectedEmployee] = useState('');
@@ -51,9 +61,28 @@ export default function InsuranceSwagBookingPage() {
   const [customerPhone, setCustomerPhone] = useState('');
 
   useEffect(() => {
-    fetchServices(BRAND_ID);
-    fetchEmployees(BRAND_ID);
-  }, []);
+    if (brandId) {
+      fetchBrand(brandId);
+      fetchServices(brandId);
+      fetchEmployees(brandId);
+    }
+  }, [brandId]);
+
+  const fetchBrand = async (brandId: string) => {
+    try {
+      const res = await fetch('/api/config/brands');
+      const data = await res.json();
+      const foundBrand = data.brands.find((b: Brand) => b.id === brandId);
+      if (foundBrand) {
+        setBrand(foundBrand);
+      } else {
+        setNotFound(true);
+      }
+    } catch (error) {
+      console.error('Error fetching brand:', error);
+      setNotFound(true);
+    }
+  };
 
   const fetchServices = async (brandId: string) => {
     try {
@@ -87,7 +116,7 @@ export default function InsuranceSwagBookingPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           serviceId: selectedService,
-          brandId: BRAND_ID,
+          brandId: brandId,
           employeeId: selectedEmployee,
           startDate: startDate.toISOString(),
           endDate: endDate.toISOString(),
@@ -127,7 +156,7 @@ export default function InsuranceSwagBookingPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           serviceId: selectedService,
-          brandId: BRAND_ID,
+          brandId: brandId,
           employeeId: selectedEmployee,
           customerName,
           customerEmail,
@@ -150,10 +179,40 @@ export default function InsuranceSwagBookingPage() {
     }
   };
 
+  if (notFound) {
+    return (
+      <div className="min-h-screen p-8 bg-gray-50">
+        <div className="max-w-3xl mx-auto">
+          <Card>
+            <CardHeader>
+              <CardTitle>Brand Not Found</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="mb-4">The requested booking calendar could not be found.</p>
+              <a href="/" className="text-blue-600 hover:underline">
+                Return to home page
+              </a>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  }
+
+  if (!brand) {
+    return (
+      <div className="min-h-screen p-8 bg-gray-50">
+        <div className="max-w-3xl mx-auto">
+          <p>Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen p-8 bg-gray-50">
       <div className="max-w-3xl mx-auto">
-        <h1 className="text-3xl font-bold mb-2">Insurance Swag</h1>
+        <h1 className="text-3xl font-bold mb-2">{brand.name}</h1>
         <p className="text-muted-foreground mb-8">Book a meeting with our team</p>
 
         {step === 1 && (
