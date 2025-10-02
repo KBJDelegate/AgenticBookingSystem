@@ -70,11 +70,10 @@ export default function BrandBookingPage() {
 
   const fetchBrand = async (brandId: string) => {
     try {
-      const res = await fetch('/api/config/brands');
-      const data = await res.json();
-      const foundBrand = data.brands.find((b: Brand) => b.id === brandId);
-      if (foundBrand) {
-        setBrand(foundBrand);
+      const res = await fetch(`/api/calendar/brands?brandId=${brandId}`);
+      if (res.ok) {
+        const data = await res.json();
+        setBrand(data);
       } else {
         setNotFound(true);
       }
@@ -86,7 +85,7 @@ export default function BrandBookingPage() {
 
   const fetchServices = async (brandId: string) => {
     try {
-      const res = await fetch(`/api/config/services?brandId=${brandId}`);
+      const res = await fetch(`/api/calendar/services?brandId=${brandId}`);
       const data = await res.json();
       setServices(data.services);
     } catch (error) {
@@ -96,7 +95,7 @@ export default function BrandBookingPage() {
 
   const fetchEmployees = async (brandId: string) => {
     try {
-      const res = await fetch(`/api/config/employees?brandId=${brandId}`);
+      const res = await fetch(`/api/calendar/employees?brandId=${brandId}`);
       const data = await res.json();
       setEmployees(data.employees);
     } catch (error) {
@@ -109,14 +108,14 @@ export default function BrandBookingPage() {
     try {
       const startDate = new Date();
       const endDate = new Date();
-      endDate.setDate(endDate.getDate() + 14); // Next 2 weeks
+      endDate.setDate(endDate.getDate() + 60); // Next 60 days
 
-      const res = await fetch('/api/config/availability', {
+      const res = await fetch('/api/calendar/availability', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          serviceId: selectedService,
           brandId: brandId,
+          serviceId: selectedService,
           employeeId: selectedEmployee,
           startDate: startDate.toISOString(),
           endDate: endDate.toISOString(),
@@ -151,12 +150,12 @@ export default function BrandBookingPage() {
 
     setLoading(true);
     try {
-      const res = await fetch('/api/config/bookings', {
+      const res = await fetch('/api/calendar/bookings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          serviceId: selectedService,
           brandId: brandId,
+          serviceId: selectedService,
           employeeId: selectedEmployee,
           customerName,
           customerEmail,
@@ -167,9 +166,12 @@ export default function BrandBookingPage() {
       });
 
       if (res.ok) {
+        const data = await res.json();
+        console.log('Booking created:', data.bookingId);
         setStep(4); // Success
       } else {
-        alert('Failed to create booking');
+        const error = await res.json();
+        alert(error.error || 'Failed to create booking');
       }
     } catch (error) {
       console.error('Error creating booking:', error);

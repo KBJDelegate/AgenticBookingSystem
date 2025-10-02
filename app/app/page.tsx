@@ -18,7 +18,7 @@ export default function Home() {
 
   const fetchBrands = async () => {
     try {
-      const res = await fetch('/api/config/brands');
+      const res = await fetch('/api/calendar/brands');
       const data = await res.json();
       setBrands(data.brands);
     } catch (error) {

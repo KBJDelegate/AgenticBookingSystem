@@ -1,11 +1,19 @@
 import settingsData from '@/config/settings.json';
 
+export interface ServiceConfig {
+  id: string;
+  name: string;
+  duration: number;
+  description?: string;
+}
+
 export interface BrandConfig {
   id: string;
   name: string;
   domain: string;
-  calendarId: string; // Brand's shared calendar
-  msBookingsBusinessId: string; // MS Bookings business where services are defined
+  sharedMailbox: string; // Shared mailbox calendar
+  availabilityPattern: string; // Pattern to identify available slots
+  services: ServiceConfig[]; // Services offered by this brand
 }
 
 export interface EmployeeConfig {
@@ -14,7 +22,6 @@ export interface EmployeeConfig {
   email: string;
   primaryCalendarId: string;
   brands: string[]; // Array of brand IDs this employee works for
-  msBookingsStaffMemberId?: string; // MS Bookings staff member ID for appointment assignment
 }
 
 export interface Settings {
@@ -38,24 +45,13 @@ export function getEmployeesForBrand(brandId: string): EmployeeConfig[] {
   return settingsData.employees.filter(emp => emp.brands.includes(brandId));
 }
 
-/**
- * Helper function to find MS Bookings staff member ID by matching email
- */
-export async function findStaffMemberIdByEmail(
-  msBookingsBusinessId: string,
-  email: string
-): Promise<string | null> {
-  const { getBookingStaffMembers } = await import('@/lib/bookings/service');
+export function getServiceById(brandId: string, serviceId: string): ServiceConfig | undefined {
+  const brand = getBrandById(brandId);
+  if (!brand) return undefined;
+  return brand.services.find(s => s.id === serviceId);
+}
 
-  try {
-    const staffMembers = await getBookingStaffMembers(msBookingsBusinessId);
-    const matchedStaff = staffMembers.find(
-      staff => staff.emailAddress?.toLowerCase() === email.toLowerCase()
-    );
-
-    return matchedStaff?.id || null;
-  } catch (error) {
-    console.error(`Error finding staff member by email ${email}:`, error);
-    return null;
-  }
+export function getServicesForBrand(brandId: string): ServiceConfig[] {
+  const brand = getBrandById(brandId);
+  return brand?.services || [];
 }

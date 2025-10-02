@@ -4,15 +4,43 @@
       "id": "nexttest",
       "name": "Next Test",
       "domain": "CRM278672.onmicrosoft.com",
-      "calendarId": "nexttest@CRM278672.onmicrosoft.com",
-      "msBookingsBusinessId": "BookingAPIKF@CRM278672.onmicrosoft.com"
+      "sharedMailbox": "nexttest@CRM278672.onmicrosoft.com",
+      "availabilityPattern": "Available",
+      "services": [
+        {
+          "id": "consultation",
+          "name": "Insurance Consultation",
+          "duration": 30,
+          "description": "30-minute insurance consultation"
+        },
+        {
+          "id": "review",
+          "name": "Policy Review",
+          "duration": 60,
+          "description": "60-minute comprehensive policy review"
+        }
+      ]
     },
     {
       "id": "insuranceswag",
       "name": "Insurance Swag",
       "domain": "CRM278672.onmicrosoft.com",
-      "calendarId": "insuranceswag@CRM278672.onmicrosoft.com",
-      "msBookingsBusinessId": "BookingInsurance@CRM278672.onmicrosoft.com"
+      "sharedMailbox": "insuranceswag@CRM278672.onmicrosoft.com",
+      "availabilityPattern": "Available",
+      "services": [
+        {
+          "id": "consultation",
+          "name": "Insurance Consultation",
+          "duration": 30,
+          "description": "30-minute insurance consultation"
+        },
+        {
+          "id": "review",
+          "name": "Policy Review",
+          "duration": 60,
+          "description": "60-minute comprehensive policy review"
+        }
+      ]
     }
   ],
   "employees": [
