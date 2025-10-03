@@ -48,7 +48,7 @@ function Calendar({
         ),
         month: cn("flex w-full flex-col gap-4", defaultClassNames.month),
         nav: cn(
-          "absolute inset-x-0 top-0 flex w-full items-center justify-between gap-1",
+          "hidden",
           defaultClassNames.nav
         ),
         button_previous: cn(
@@ -153,6 +153,43 @@ function Calendar({
 
           return (
             <ChevronDownIcon className={cn("size-4", className)} {...props} />
+          )
+        },
+        MonthCaption: ({ calendarMonth, ...props }) => {
+          return (
+            <div className="flex items-center justify-center gap-2 mb-4">
+              <button
+                type="button"
+                aria-label="Previous Month"
+                className={cn(
+                  buttonVariants({ variant: buttonVariant }),
+                  "h-7 w-7 p-0"
+                )}
+                onClick={() => {
+                  const prev = document.querySelector('[name="previous-month"]') as HTMLButtonElement;
+                  prev?.click();
+                }}
+              >
+                <ChevronLeftIcon className="size-4" />
+              </button>
+              <div className="text-sm font-semibold min-w-[120px] text-center">
+                {calendarMonth.date.toLocaleString("default", { month: "long", year: "numeric" })}
+              </div>
+              <button
+                type="button"
+                aria-label="Next Month"
+                className={cn(
+                  buttonVariants({ variant: buttonVariant }),
+                  "h-7 w-7 p-0"
+                )}
+                onClick={() => {
+                  const next = document.querySelector('[name="next-month"]') as HTMLButtonElement;
+                  next?.click();
+                }}
+              >
+                <ChevronRightIcon className="size-4" />
+              </button>
+            </div>
           )
         },
         DayButton: CalendarDayButton,

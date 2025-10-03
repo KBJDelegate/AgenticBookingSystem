@@ -370,7 +370,7 @@ export default function BrandBookingPage() {
                         if (date < startOfDay(new Date())) return true;
                         return !availableDates.some(availDate => isSameDay(availDate, date));
                       }}
-                      className="rounded-md"
+                      className="rounded-md border shadow-sm p-4"
                     />
                   </div>
                 )}
