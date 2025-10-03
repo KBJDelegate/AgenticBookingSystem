@@ -12,26 +12,25 @@ A modern web-based booking system that allows insurance customers to schedule me
 
 ## System Architecture
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                        Customer Browser                      │
-│                                                              │
-│  ┌─────────────────────────────────────────────────────┐   │
-│  │           Next.js Full-Stack Application             │   │
-│  │                                                      │   │
-│  │  • Booking Form    • Calendar View                  │   │
-│  │  • API Routes      • Server Components              │   │
-│  └──────────────────────┬───────────────────────────────┘   │
-└────────────────────────┼────────────────────────────────────┘
-                         │ Internal API Routes
-                         ▼
-         ┌──────────────────────────────────┐
-         │   Microsoft Graph API            │
-         │                                  │
-         │   • Calendar API (Shared Mailbox)│
-         │   • Calendar API (Staff Personal)│
-         │   • Mail API (Invites)           │
-         └──────────────────────────────────┘
+```mermaid
+graph TB
+    subgraph Browser["Customer Browser"]
+        subgraph NextJS["Next.js Full-Stack Application"]
+            UI["• Booking Form<br/>• Calendar View"]
+            API["• API Routes<br/>• Server Components"]
+        end
+    end
+
+    subgraph Microsoft["Microsoft Graph API"]
+        Calendar["• Calendar API (Shared Mailbox)<br/>• Calendar API (Staff Personal)"]
+        Mail["• Mail API (Invites)"]
+    end
+
+    NextJS -->|Internal API Routes| Microsoft
+
+    style Browser fill:#e3f2fd
+    style NextJS fill:#bbdefb
+    style Microsoft fill:#fff3e0
 ```
 
 ## How It Works
