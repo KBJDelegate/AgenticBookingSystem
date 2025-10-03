@@ -67,7 +67,8 @@
       "Bash(npx tsx:*)",
       "Bash(timeout 30 npm run dev)",
       "Bash(xargs:*)",
-      "Read(//tmp/**)"
+      "Read(//tmp/**)",
+      "Bash(git log:*)"
     ]
   },
   "enableAllProjectMcpServers": true,
