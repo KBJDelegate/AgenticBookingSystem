@@ -73,6 +73,10 @@ export default function BrandBookingPage() {
 
   useEffect(() => {
     if (selectedService && selectedEmployee && brandId) {
+      // Clear previous slots when service or employee changes
+      setSlots([]);
+      setSelectedSlot(null);
+      setSelectedDate(undefined);
       fetchAvailability();
     }
   }, [selectedService, selectedEmployee]);
@@ -97,8 +101,8 @@ export default function BrandBookingPage() {
       const res = await fetch(`/api/calendar/services?brandId=${brandId}`);
       const data = await res.json();
       setServices(data.services);
-      // Auto-select first service if only one exists
-      if (data.services.length === 1) {
+      // Always auto-select first service for instant booking flow
+      if (data.services.length > 0) {
         setSelectedService(data.services[0].id);
       }
     } catch (error) {
@@ -111,6 +115,10 @@ export default function BrandBookingPage() {
       const res = await fetch(`/api/calendar/employees?brandId=${brandId}`);
       const data = await res.json();
       setEmployees(data.employees);
+      // Always auto-select first employee for instant booking flow
+      if (data.employees.length > 0) {
+        setSelectedEmployee(data.employees[0].id);
+      }
     } catch (error) {
       console.error('Error fetching employees:', error);
     }
@@ -266,7 +274,7 @@ export default function BrandBookingPage() {
       {/* Header */}
       <div className="bg-white border-b">
         <div className="max-w-5xl mx-auto px-4 py-6">
-          <div className="flex items-center gap-4">
+          <div className="flex items-center justify-center gap-4">
             {/* Logo placeholder - you can add actual logo here */}
             <div className="text-red-600 font-bold text-3xl">ii</div>
             <div>
@@ -291,7 +299,7 @@ export default function BrandBookingPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            {services.length > 1 ? (
+            {services.length > 0 && (
               <div>
                 <Label htmlFor="service">Service</Label>
                 <Select value={selectedService} onValueChange={setSelectedService}>
@@ -307,7 +315,7 @@ export default function BrandBookingPage() {
                   </SelectContent>
                 </Select>
               </div>
-            ) : null}
+            )}
 
             <div>
               <Label htmlFor="employee">Medarbejder</Label>
@@ -334,7 +342,7 @@ export default function BrandBookingPage() {
               Booking for {selectedServiceDetails?.name}
             </h2>
 
-            <div className="grid md:grid-cols-2 gap-8">
+            <div className="grid md:grid-cols-2 gap-8 mb-8">
               {/* Left Column - Calendar */}
               <div>
                 <div className="mb-4">
@@ -368,8 +376,8 @@ export default function BrandBookingPage() {
                 )}
               </div>
 
-              {/* Right Column - Time slots and form */}
-              <div className="space-y-6">
+              {/* Right Column - Time slots */}
+              <div>
                 {/* Time Slots */}
                 {selectedDate && slotsForSelectedDate.length > 0 && (
                   <div>
@@ -396,60 +404,60 @@ export default function BrandBookingPage() {
                     </div>
                   </div>
                 )}
+              </div>
+            </div>
 
-                {/* Customer Information Form */}
-                {selectedSlot && (
-                  <div className="space-y-4">
-                    <h3 className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
-                      <User className="h-4 w-4" />
-                      TILFØJ DINE OPLYSNINGER
-                    </h3>
-                    <Separator />
+            {/* Customer Information Form - Full Width Section */}
+            <div className="max-w-2xl mx-auto">
+              <div className="space-y-4">
+                <h3 className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+                  <User className="h-4 w-4" />
+                  TILFØJ DINE OPLYSNINGER
+                </h3>
+                <Separator />
 
-                    <div>
-                      <Label htmlFor="name">Fornavn og efternavn *</Label>
-                      <Input
-                        id="name"
-                        value={customerName}
-                        onChange={(e) => setCustomerName(e.target.value)}
-                        placeholder="Fornavn og efternavn"
-                        className="mt-1"
-                      />
-                    </div>
+                <div>
+                  <Label htmlFor="name">Fornavn og efternavn *</Label>
+                  <Input
+                    id="name"
+                    value={customerName}
+                    onChange={(e) => setCustomerName(e.target.value)}
+                    placeholder="Fornavn og efternavn"
+                    className="mt-1"
+                  />
+                </div>
 
-                    <div>
-                      <Label htmlFor="email">Mail *</Label>
-                      <Input
-                        id="email"
-                        type="email"
-                        value={customerEmail}
-                        onChange={(e) => setCustomerEmail(e.target.value)}
-                        placeholder="Mail"
-                        className="mt-1"
-                      />
-                    </div>
+                <div>
+                  <Label htmlFor="email">Mail *</Label>
+                  <Input
+                    id="email"
+                    type="email"
+                    value={customerEmail}
+                    onChange={(e) => setCustomerEmail(e.target.value)}
+                    placeholder="Mail"
+                    className="mt-1"
+                  />
+                </div>
 
-                    <div>
-                      <Label htmlFor="phone">Telefonnummer *</Label>
-                      <Input
-                        id="phone"
-                        type="tel"
-                        value={customerPhone}
-                        onChange={(e) => setCustomerPhone(e.target.value)}
-                        placeholder="Tilføj dit telefonnummer"
-                        className="mt-1"
-                      />
-                    </div>
+                <div>
+                  <Label htmlFor="phone">Telefonnummer *</Label>
+                  <Input
+                    id="phone"
+                    type="tel"
+                    value={customerPhone}
+                    onChange={(e) => setCustomerPhone(e.target.value)}
+                    placeholder="Tilføj dit telefonnummer"
+                    className="mt-1"
+                  />
+                </div>
 
-                    <Button
-                      onClick={createBooking}
-                      disabled={!customerName || !customerEmail || loading}
-                      className="w-full bg-red-600 hover:bg-red-700 text-white font-semibold py-3 text-lg"
-                    >
-                      {loading ? 'Reserverer...' : 'Reservér'}
-                    </Button>
-                  </div>
-                )}
+                <Button
+                  onClick={createBooking}
+                  disabled={!selectedSlot || !customerName || !customerEmail || loading}
+                  className="w-full bg-red-600 hover:bg-red-700 text-white font-semibold py-3 text-lg"
+                >
+                  {loading ? 'Reserverer...' : 'Reservér'}
+                </Button>
               </div>
             </div>
           </>
