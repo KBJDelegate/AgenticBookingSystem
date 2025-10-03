@@ -14,7 +14,9 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Calendar } from '@/components/ui/calendar';
+import { Separator } from '@/components/ui/separator';
 import { format, startOfDay, isSameDay } from 'date-fns';
+import { CalendarIcon, Clock, User } from 'lucide-react';
 
 interface Service {
   id: string;
@@ -32,6 +34,7 @@ interface Employee {
 interface TimeSlot {
   start: string;
   end: string;
+  availableStaffEmails?: string[];
 }
 
 interface Brand {
@@ -44,13 +47,13 @@ export default function BrandBookingPage() {
   const params = useParams();
   const brandId = params.brandId as string;
 
-  const [step, setStep] = useState(1);
   const [brand, setBrand] = useState<Brand | null>(null);
   const [services, setServices] = useState<Service[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [slots, setSlots] = useState<TimeSlot[]>([]);
   const [loading, setLoading] = useState(false);
   const [notFound, setNotFound] = useState(false);
+  const [bookingSuccess, setBookingSuccess] = useState(false);
 
   const [selectedService, setSelectedService] = useState('');
   const [selectedEmployee, setSelectedEmployee] = useState('');
@@ -67,6 +70,12 @@ export default function BrandBookingPage() {
       fetchEmployees(brandId);
     }
   }, [brandId]);
+
+  useEffect(() => {
+    if (selectedService && selectedEmployee && brandId) {
+      fetchAvailability();
+    }
+  }, [selectedService, selectedEmployee]);
 
   const fetchBrand = async (brandId: string) => {
     try {
@@ -88,6 +97,10 @@ export default function BrandBookingPage() {
       const res = await fetch(`/api/calendar/services?brandId=${brandId}`);
       const data = await res.json();
       setServices(data.services);
+      // Auto-select first service if only one exists
+      if (data.services.length === 1) {
+        setSelectedService(data.services[0].id);
+      }
     } catch (error) {
       console.error('Error fetching services:', error);
     }
@@ -124,7 +137,11 @@ export default function BrandBookingPage() {
 
       const data = await res.json();
       setSlots(data.slots || []);
-      setStep(2);
+      // Auto-select the first available date
+      if (data.slots && data.slots.length > 0) {
+        const firstSlotDate = startOfDay(new Date(data.slots[0].start));
+        setSelectedDate(firstSlotDate);
+      }
     } catch (error) {
       console.error('Error fetching availability:', error);
     } finally {
@@ -168,7 +185,15 @@ export default function BrandBookingPage() {
       if (res.ok) {
         const data = await res.json();
         console.log('Booking created:', data.bookingId);
-        setStep(4); // Success
+        setBookingSuccess(true);
+        // Reset form after 5 seconds
+        setTimeout(() => {
+          setBookingSuccess(false);
+          setSelectedSlot(null);
+          setCustomerName('');
+          setCustomerEmail('');
+          setCustomerPhone('');
+        }, 5000);
       } else {
         const error = await res.json();
         alert(error.error || 'Failed to create booking');
@@ -181,18 +206,20 @@ export default function BrandBookingPage() {
     }
   };
 
+  const selectedServiceDetails = services.find(s => s.id === selectedService);
+
   if (notFound) {
     return (
-      <div className="min-h-screen p-8 bg-gray-50">
-        <div className="max-w-3xl mx-auto">
+      <div className="min-h-screen p-8 bg-white">
+        <div className="max-w-4xl mx-auto">
           <Card>
             <CardHeader>
-              <CardTitle>Brand Not Found</CardTitle>
+              <CardTitle>Booking ikke fundet</CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="mb-4">The requested booking calendar could not be found.</p>
+              <p className="mb-4">Den ønskede booking kalender kunne ikke findes.</p>
               <a href="/" className="text-blue-600 hover:underline">
-                Return to home page
+                Tilbage til forsiden
               </a>
             </CardContent>
           </Card>
@@ -203,35 +230,73 @@ export default function BrandBookingPage() {
 
   if (!brand) {
     return (
-      <div className="min-h-screen p-8 bg-gray-50">
-        <div className="max-w-3xl mx-auto">
-          <p>Loading...</p>
+      <div className="min-h-screen p-8 bg-white">
+        <div className="max-w-4xl mx-auto">
+          <p>Indlæser...</p>
         </div>
       </div>
     );
   }
 
-  return (
-    <div className="min-h-screen p-8 bg-gray-50">
-      <div className="max-w-3xl mx-auto">
-        <h1 className="text-3xl font-bold mb-2">{brand.name}</h1>
-        <p className="text-muted-foreground mb-8">Book a meeting with our team</p>
+  if (bookingSuccess) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-white">
+        <Card className="w-full max-w-md">
+          <CardHeader className="text-center">
+            <CardTitle className="text-2xl text-green-600">Booking bekræftet!</CardTitle>
+            <CardDescription>
+              Din tid er blevet reserveret
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="text-center">
+            <p className="mb-4">
+              Du vil modtage en kalenderinvitation på {customerEmail}
+            </p>
+            <Button onClick={() => window.location.reload()} className="w-full">
+              Lav en ny booking
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
-        {step === 1 && (
-          <Card>
-            <CardHeader>
-              <CardTitle>Select Service</CardTitle>
-              <CardDescription>Choose a service and staff member</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
+  return (
+    <div className="min-h-screen bg-white">
+      {/* Header */}
+      <div className="bg-white border-b">
+        <div className="max-w-5xl mx-auto px-4 py-6">
+          <div className="flex items-center gap-4">
+            {/* Logo placeholder - you can add actual logo here */}
+            <div className="text-red-600 font-bold text-3xl">ii</div>
+            <div>
+              <h1 className="text-2xl font-semibold">{brand.name}</h1>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="max-w-5xl mx-auto px-4 py-8">
+        {/* Service and Staff Selection */}
+        <Card className="mb-6 border-red-500">
+          <CardHeader className="pb-3">
+            <div className="flex items-center gap-2">
+              <div className="h-2 w-2 bg-red-600 rounded-full"></div>
+              <CardTitle className="text-lg">
+                {selectedServiceDetails ? selectedServiceDetails.name : 'Vælg service'}
+              </CardTitle>
+            </div>
+            <CardDescription>
+              {selectedServiceDetails ? `${selectedServiceDetails.duration} minutter` : 'Vælg service og medarbejder nedenfor'}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {services.length > 1 ? (
               <div>
                 <Label htmlFor="service">Service</Label>
-                <Select
-                  value={selectedService}
-                  onValueChange={setSelectedService}
-                >
+                <Select value={selectedService} onValueChange={setSelectedService}>
                   <SelectTrigger id="service">
-                    <SelectValue placeholder="Select a service" />
+                    <SelectValue placeholder="Vælg service" />
                   </SelectTrigger>
                   <SelectContent>
                     {services.map((service) => (
@@ -242,52 +307,53 @@ export default function BrandBookingPage() {
                   </SelectContent>
                 </Select>
               </div>
+            ) : null}
 
+            <div>
+              <Label htmlFor="employee">Medarbejder</Label>
+              <Select value={selectedEmployee} onValueChange={setSelectedEmployee}>
+                <SelectTrigger id="employee">
+                  <SelectValue placeholder="Vælg medarbejder" />
+                </SelectTrigger>
+                <SelectContent>
+                  {employees.map((employee) => (
+                    <SelectItem key={employee.id} value={employee.id}>
+                      {employee.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Booking Section */}
+        {selectedService && selectedEmployee && (
+          <>
+            <h2 className="text-xl font-semibold mb-6">
+              Booking for {selectedServiceDetails?.name}
+            </h2>
+
+            <div className="grid md:grid-cols-2 gap-8">
+              {/* Left Column - Calendar */}
               <div>
-                <Label htmlFor="employee">Staff Member</Label>
-                <Select
-                  value={selectedEmployee}
-                  onValueChange={setSelectedEmployee}
-                >
-                  <SelectTrigger id="employee">
-                    <SelectValue placeholder="Select a staff member" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {employees.map((employee) => (
-                      <SelectItem key={employee.id} value={employee.id}>
-                        {employee.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <Button
-                onClick={fetchAvailability}
-                disabled={!selectedService || !selectedEmployee || loading}
-                className="w-full"
-              >
-                {loading ? 'Loading...' : 'Find Available Times'}
-              </Button>
-            </CardContent>
-          </Card>
-        )}
-
-        {step === 2 && (
-          <Card className="shadow-lg">
-            <CardHeader className="space-y-1">
-              <CardTitle className="text-2xl">Select Date & Time</CardTitle>
-              <CardDescription>Choose an available date from the calendar below</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-8">
-              {slots.length === 0 ? (
-                <div className="text-center py-12">
-                  <p className="text-muted-foreground text-lg">No available slots found</p>
-                  <p className="text-sm text-muted-foreground mt-2">Please try different selections</p>
+                <div className="mb-4">
+                  <h3 className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+                    <CalendarIcon className="h-4 w-4" />
+                    DATO
+                  </h3>
+                  <Separator />
                 </div>
-              ) : (
-                <>
-                  <div className="flex justify-center p-4 bg-gradient-to-br from-primary/5 to-primary/10 rounded-lg">
+                {loading ? (
+                  <div className="flex justify-center py-12">
+                    <p className="text-gray-500">Indlæser ledige tider...</p>
+                  </div>
+                ) : slots.length === 0 ? (
+                  <div className="text-center py-12">
+                    <p className="text-gray-500">Ingen ledige tider fundet</p>
+                  </div>
+                ) : (
+                  <div className="flex justify-center">
                     <Calendar
                       mode="single"
                       selected={selectedDate}
@@ -296,134 +362,97 @@ export default function BrandBookingPage() {
                         if (date < startOfDay(new Date())) return true;
                         return !availableDates.some(availDate => isSameDay(availDate, date));
                       }}
-                      modifiers={{
-                        available: availableDates,
-                      }}
-                      modifiersClassNames={{
-                        available: 'bg-primary text-primary-foreground hover:bg-primary/90 font-semibold rounded-md',
-                      }}
-                      className="rounded-md border-0 shadow-sm"
+                      className="rounded-md"
                     />
                   </div>
+                )}
+              </div>
 
-                  {selectedDate && (
-                    <div className="space-y-4 animate-in fade-in-50 duration-300">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <h3 className="text-lg font-semibold">
-                            {format(selectedDate, 'EEEE, MMMM d')}
-                          </h3>
-                          <p className="text-sm text-muted-foreground">
-                            {slotsForSelectedDate.length} time slots available
-                          </p>
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-3 sm:grid-cols-4 gap-3 max-h-64 overflow-y-auto p-1">
-                        {slotsForSelectedDate.map((slot, index) => (
-                          <Button
-                            key={index}
-                            variant={selectedSlot === slot ? 'default' : 'outline'}
-                            className="h-12 font-medium transition-all hover:scale-105"
-                            onClick={() => {
-                              setSelectedSlot(slot);
-                              setStep(3);
-                            }}
-                          >
-                            {format(new Date(slot.start), 'h:mm a')}
-                          </Button>
-                        ))}
-                      </div>
+              {/* Right Column - Time slots and form */}
+              <div className="space-y-6">
+                {/* Time Slots */}
+                {selectedDate && slotsForSelectedDate.length > 0 && (
+                  <div>
+                    <h3 className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+                      <Clock className="h-4 w-4" />
+                      TIDSPUNKT
+                    </h3>
+                    <Separator className="mb-4" />
+                    <div className="flex flex-wrap gap-2">
+                      {slotsForSelectedDate.map((slot, index) => (
+                        <Button
+                          key={index}
+                          variant={selectedSlot === slot ? 'default' : 'outline'}
+                          className={`px-4 py-2 ${
+                            selectedSlot === slot
+                              ? 'bg-red-600 hover:bg-red-700 text-white'
+                              : 'hover:border-red-600 hover:text-red-600'
+                          }`}
+                          onClick={() => setSelectedSlot(slot)}
+                        >
+                          {format(new Date(slot.start), 'HH:mm')}
+                        </Button>
+                      ))}
                     </div>
-                  )}
+                  </div>
+                )}
 
-                  {!selectedDate && (
-                    <div className="text-center py-6">
-                      <p className="text-sm text-muted-foreground">
-                        Select a date from the calendar to see available time slots
-                      </p>
+                {/* Customer Information Form */}
+                {selectedSlot && (
+                  <div className="space-y-4">
+                    <h3 className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+                      <User className="h-4 w-4" />
+                      TILFØJ DINE OPLYSNINGER
+                    </h3>
+                    <Separator />
+
+                    <div>
+                      <Label htmlFor="name">Fornavn og efternavn *</Label>
+                      <Input
+                        id="name"
+                        value={customerName}
+                        onChange={(e) => setCustomerName(e.target.value)}
+                        placeholder="Fornavn og efternavn"
+                        className="mt-1"
+                      />
                     </div>
-                  )}
-                </>
-              )}
-              <Button variant="ghost" onClick={() => setStep(1)} className="w-full mt-4">
-                Back
-              </Button>
-            </CardContent>
-          </Card>
-        )}
 
-        {step === 3 && selectedSlot && (
-          <Card>
-            <CardHeader>
-              <CardTitle>Your Information</CardTitle>
-              <CardDescription>
-                Selected: {format(new Date(selectedSlot.start), 'EEEE, MMMM d, yyyy - h:mm a')}
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <Label htmlFor="name">Full Name *</Label>
-                <Input
-                  id="name"
-                  value={customerName}
-                  onChange={(e) => setCustomerName(e.target.value)}
-                  placeholder="John Doe"
-                />
+                    <div>
+                      <Label htmlFor="email">Mail *</Label>
+                      <Input
+                        id="email"
+                        type="email"
+                        value={customerEmail}
+                        onChange={(e) => setCustomerEmail(e.target.value)}
+                        placeholder="Mail"
+                        className="mt-1"
+                      />
+                    </div>
+
+                    <div>
+                      <Label htmlFor="phone">Telefonnummer *</Label>
+                      <Input
+                        id="phone"
+                        type="tel"
+                        value={customerPhone}
+                        onChange={(e) => setCustomerPhone(e.target.value)}
+                        placeholder="Tilføj dit telefonnummer"
+                        className="mt-1"
+                      />
+                    </div>
+
+                    <Button
+                      onClick={createBooking}
+                      disabled={!customerName || !customerEmail || loading}
+                      className="w-full bg-red-600 hover:bg-red-700 text-white font-semibold py-3 text-lg"
+                    >
+                      {loading ? 'Reserverer...' : 'Reservér'}
+                    </Button>
+                  </div>
+                )}
               </div>
-
-              <div>
-                <Label htmlFor="email">Email *</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  value={customerEmail}
-                  onChange={(e) => setCustomerEmail(e.target.value)}
-                  placeholder="john@example.com"
-                />
-              </div>
-
-              <div>
-                <Label htmlFor="phone">Phone (optional)</Label>
-                <Input
-                  id="phone"
-                  type="tel"
-                  value={customerPhone}
-                  onChange={(e) => setCustomerPhone(e.target.value)}
-                  placeholder="+45 12 34 56 78"
-                />
-              </div>
-
-              <div className="flex gap-2">
-                <Button variant="ghost" onClick={() => setStep(2)} className="flex-1">
-                  Back
-                </Button>
-                <Button
-                  onClick={createBooking}
-                  disabled={!customerName || !customerEmail || loading}
-                  className="flex-1"
-                >
-                  {loading ? 'Booking...' : 'Confirm Booking'}
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {step === 4 && (
-          <Card>
-            <CardHeader>
-              <CardTitle>Booking Confirmed!</CardTitle>
-              <CardDescription>Your meeting has been scheduled</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <p className="mb-4">
-                You will receive a calendar invitation at {customerEmail}
-              </p>
-              <Button onClick={() => window.location.reload()} className="w-full">
-                Make Another Booking
-              </Button>
-            </CardContent>
-          </Card>
+            </div>
+          </>
         )}
       </div>
     </div>

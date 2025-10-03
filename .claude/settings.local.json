@@ -69,7 +69,9 @@
       "Bash(xargs:*)",
       "Read(//tmp/**)",
       "Bash(git log:*)",
-      "Bash(killall:*)"
+      "Bash(killall:*)",
+      "Bash(npx shadcn-ui:*)",
+      "Bash(npx shadcn@latest add:*)"
     ]
   },
   "enableAllProjectMcpServers": true,

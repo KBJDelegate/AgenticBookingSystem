@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAvailableSlots } from '@/lib/calendar/availability';
-import { getBrandById, getEmployeeById, getServiceById } from '@/lib/config/settings';
+import { getBrandById, getEmployeeById, getServiceById, getEmployeesForBrand } from '@/lib/config/settings';
 import { z } from 'zod';
 
 const availabilitySchema = z.object({
   brandId: z.string(),
   serviceId: z.string(),
-  employeeId: z.string(),
+  employeeId: z.string().optional(), // Optional - if not provided, checks all employees for the brand
   startDate: z.string(),
   endDate: z.string(),
 });
@@ -18,28 +18,50 @@ export async function POST(request: NextRequest) {
 
     // Get configuration
     const brand = getBrandById(brandId);
-    const employee = getEmployeeById(employeeId);
     const service = getServiceById(brandId, serviceId);
 
-    if (!brand || !employee || !service) {
+    if (!brand || !service) {
       return NextResponse.json(
-        { error: 'Invalid brand, employee, or service' },
+        { error: 'Invalid brand or service' },
         { status: 400 }
       );
     }
 
-    // Check if employee works for this brand
-    if (!employee.brands.includes(brandId)) {
-      return NextResponse.json(
-        { error: 'Employee does not work for this brand' },
-        { status: 400 }
-      );
+    // Determine which employees to check
+    let employeeEmails: string[];
+
+    if (employeeId) {
+      // Check specific employee
+      const employee = getEmployeeById(employeeId);
+      if (!employee) {
+        return NextResponse.json(
+          { error: 'Employee not found' },
+          { status: 400 }
+        );
+      }
+      if (!employee.brands.includes(brandId)) {
+        return NextResponse.json(
+          { error: 'Employee does not work for this brand' },
+          { status: 400 }
+        );
+      }
+      employeeEmails = [employee.primaryCalendarId];
+    } else {
+      // Check all employees for this brand
+      const employees = getEmployeesForBrand(brandId);
+      if (employees.length === 0) {
+        return NextResponse.json(
+          { error: 'No employees found for this brand' },
+          { status: 400 }
+        );
+      }
+      employeeEmails = employees.map(emp => emp.primaryCalendarId);
     }
 
     // Get available slots from the calendar system
     const slots = await getAvailableSlots(
       brand.sharedMailbox,
-      employee.primaryCalendarId,
+      employeeEmails,
       new Date(startDate),
       new Date(endDate),
       service.duration,
@@ -52,6 +74,7 @@ export async function POST(request: NextRequest) {
         end: slot.end.toISOString(),
         duration: slot.duration,
         isRecurring: slot.isRecurring,
+        availableStaffEmails: slot.availableStaffEmails,
       })),
       total: slots.length,
     });

@@ -26,20 +26,24 @@ export interface AvailableSlot {
   duration: number;
   isRecurring: boolean;
   recurringId?: string;
+  availableStaffEmails?: string[]; // Staff members available for this slot
 }
 
 /**
  * Get available time slots from a shared mailbox calendar
  * Recurring meetings with specific patterns represent available slots
+ * Supports multiple staff members - returns slots where ANY staff member is available
  */
 export async function getAvailableSlots(
   sharedMailboxEmail: string,
-  staffEmail: string,
+  staffEmails: string | string[],
   startDate: Date,
   endDate: Date,
   serviceDuration: number,
   availabilityPattern: string = 'Available'
 ): Promise<AvailableSlot[]> {
+  // Normalize staffEmails to always be an array
+  const staffEmailArray = Array.isArray(staffEmails) ? staffEmails : [staffEmails];
   const availableSlots: AvailableSlot[] = [];
 
   try {
@@ -97,19 +101,33 @@ export async function getAvailableSlots(
             slot.end
           );
 
-          const staffAvailable = await isTimeSlotAvailable(
-            staffEmail,
-            slot.start,
-            slot.end
-          );
+          if (!sharedAvailable) {
+            console.log(`    - Slot ${format(slot.start, 'HH:mm')}-${format(slot.end, 'HH:mm')}: shared calendar busy, skipping`);
+            continue;
+          }
 
-          console.log(`    - Slot ${format(slot.start, 'HH:mm')}-${format(slot.end, 'HH:mm')}: shared=${sharedAvailable}, staff=${staffAvailable}`);
+          // Check which staff members are available
+          const availableStaff: string[] = [];
+          for (const email of staffEmailArray) {
+            const staffAvailable = await isTimeSlotAvailable(
+              email,
+              slot.start,
+              slot.end
+            );
+            if (staffAvailable) {
+              availableStaff.push(email);
+            }
+          }
 
-          if (sharedAvailable && staffAvailable) {
+          console.log(`    - Slot ${format(slot.start, 'HH:mm')}-${format(slot.end, 'HH:mm')}: shared=true, available staff=[${availableStaff.join(', ')}]`);
+
+          // If at least one staff member is available, add the slot
+          if (availableStaff.length > 0) {
             availableSlots.push({
               ...slot,
               isRecurring: event.type === 'occurrence' || event.type === 'seriesMaster',
-              recurringId: event.id
+              recurringId: event.id,
+              availableStaffEmails: availableStaff
             });
           }
         }

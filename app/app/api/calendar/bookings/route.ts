@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createBooking, cancelBooking, getCustomerBookings } from '@/lib/calendar/booking';
-import { getBrandById, getEmployeeById, getServiceById } from '@/lib/config/settings';
+import { getBrandById, getEmployeeById, getServiceById, getEmployeesForBrand } from '@/lib/config/settings';
+import { isTimeSlotAvailable } from '@/lib/calendar/service';
 import { z } from 'zod';
 
 const createBookingSchema = z.object({
   brandId: z.string(),
   serviceId: z.string(),
-  employeeId: z.string(),
+  employeeId: z.string().optional(), // Optional - will auto-assign if not provided
   customerName: z.string(),
   customerEmail: z.string().email(),
   customerPhone: z.string().optional(),
@@ -22,34 +23,90 @@ export async function POST(request: NextRequest) {
 
     // Get configuration
     const brand = getBrandById(data.brandId);
-    const employee = getEmployeeById(data.employeeId);
     const service = getServiceById(data.brandId, data.serviceId);
 
-    if (!brand || !employee || !service) {
+    if (!brand || !service) {
       return NextResponse.json(
-        { error: 'Invalid brand, employee, or service' },
+        { error: 'Invalid brand or service' },
         { status: 400 }
       );
     }
 
-    // Check if employee works for this brand
-    if (!employee.brands.includes(data.brandId)) {
-      return NextResponse.json(
-        { error: 'Employee does not work for this brand' },
-        { status: 400 }
+    // Determine which employee to assign
+    let assignedEmployee;
+    const startTime = new Date(data.startTime);
+    const endTime = new Date(data.endTime);
+
+    if (data.employeeId) {
+      // Use specified employee
+      assignedEmployee = getEmployeeById(data.employeeId);
+      if (!assignedEmployee) {
+        return NextResponse.json(
+          { error: 'Employee not found' },
+          { status: 400 }
+        );
+      }
+      if (!assignedEmployee.brands.includes(data.brandId)) {
+        return NextResponse.json(
+          { error: 'Employee does not work for this brand' },
+          { status: 400 }
+        );
+      }
+
+      // Verify employee is available
+      const isAvailable = await isTimeSlotAvailable(
+        assignedEmployee.primaryCalendarId,
+        startTime,
+        endTime
       );
+      if (!isAvailable) {
+        return NextResponse.json(
+          { error: 'Selected employee is not available at this time' },
+          { status: 409 }
+        );
+      }
+    } else {
+      // Auto-assign to an available employee
+      const employees = getEmployeesForBrand(data.brandId);
+      if (employees.length === 0) {
+        return NextResponse.json(
+          { error: 'No employees found for this brand' },
+          { status: 400 }
+        );
+      }
+
+      // Find first available employee
+      for (const employee of employees) {
+        const isAvailable = await isTimeSlotAvailable(
+          employee.primaryCalendarId,
+          startTime,
+          endTime
+        );
+        if (isAvailable) {
+          assignedEmployee = employee;
+          console.log(`Auto-assigned booking to ${employee.name} (${employee.email})`);
+          break;
+        }
+      }
+
+      if (!assignedEmployee) {
+        return NextResponse.json(
+          { error: 'No staff members are available at this time' },
+          { status: 409 }
+        );
+      }
     }
 
     // Create the booking
     const booking = await createBooking({
       sharedMailboxEmail: brand.sharedMailbox,
-      staffEmail: employee.primaryCalendarId,
+      staffEmail: assignedEmployee.primaryCalendarId,
       serviceName: service.name,
       customerName: data.customerName,
       customerEmail: data.customerEmail,
       customerPhone: data.customerPhone,
-      startTime: new Date(data.startTime),
-      endTime: new Date(data.endTime),
+      startTime,
+      endTime,
       notes: data.notes,
     });
 
@@ -64,6 +121,11 @@ export async function POST(request: NextRequest) {
         startTime: booking.startTime,
         endTime: booking.endTime,
         status: booking.status,
+        assignedStaff: {
+          id: assignedEmployee.id,
+          name: assignedEmployee.name,
+          email: assignedEmployee.email,
+        },
       },
     });
   } catch (error: any) {
