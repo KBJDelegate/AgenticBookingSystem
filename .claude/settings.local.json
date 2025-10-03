@@ -68,7 +68,8 @@
       "Bash(timeout 30 npm run dev)",
       "Bash(xargs:*)",
       "Read(//tmp/**)",
-      "Bash(git log:*)"
+      "Bash(git log:*)",
+      "Bash(killall:*)"
     ]
   },
   "enableAllProjectMcpServers": true,

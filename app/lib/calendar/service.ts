@@ -144,7 +144,8 @@ export async function getRecurringAvailableSlots(
 }
 
 /**
- * Create a calendar event (booking) in both shared mailbox and personal calendar
+ * Create a calendar event (booking) in the shared mailbox calendar
+ * The staff member will receive the booking as a meeting invitation automatically
  */
 export async function createCalendarBooking(
   sharedMailboxEmail: string,
@@ -159,7 +160,7 @@ export async function createCalendarBooking(
   const client = getGraphClient();
 
   const event = {
-    subject: `${serviceName} - ${customerName}`,
+    subject: `[Booking] ${serviceName} - ${customerName}`,
     body: {
       contentType: 'HTML',
       content: `
@@ -203,28 +204,18 @@ export async function createCalendarBooking(
 
   try {
     // Create event in shared mailbox calendar
+    // Staff member will receive this as a meeting invitation automatically
     const sharedResponse = await client
       .api(`/users/${sharedMailboxEmail}/calendar/events`)
       .post(event);
 
-    // Create event in staff personal calendar
-    const staffEvent = {
-      ...event,
-      subject: `[Booking] ${serviceName} - ${customerName}`,
-      location: {
-        displayName: `Shared Calendar: ${sharedMailboxEmail}`,
-      },
-    };
+    console.log(`✓ Created calendar event in shared mailbox: ${sharedResponse.id}`);
+    console.log(`✓ Meeting invitation sent to staff member ${staffEmail}`);
 
-    const staffResponse = await client
-      .api(`/users/${staffEmail}/calendar/events`)
-      .post(staffEvent);
-
-    console.log(`✓ Created calendar events - Shared: ${sharedResponse.id}, Staff: ${staffResponse.id}`);
-
+    // Staff member will receive the invitation and needs to accept it manually
     return {
       sharedEventId: sharedResponse.id,
-      staffEventId: staffResponse.id,
+      staffEventId: sharedResponse.id,
     };
   } catch (error) {
     console.error('Error creating calendar booking:', error);
@@ -233,7 +224,8 @@ export async function createCalendarBooking(
 }
 
 /**
- * Cancel a calendar booking by deleting the events
+ * Cancel a calendar booking by deleting the shared mailbox event
+ * The staff member's meeting invitation will be cancelled automatically
  */
 export async function cancelCalendarBooking(
   sharedMailboxEmail: string,
@@ -246,16 +238,13 @@ export async function cancelCalendarBooking(
 
   try {
     // Cancel event in shared mailbox
+    // This will automatically cancel the meeting invitation for all attendees (including staff)
     await client
       .api(`/users/${sharedMailboxEmail}/calendar/events/${sharedEventId}`)
       .delete();
 
-    // Cancel event in staff calendar
-    await client
-      .api(`/users/${staffEmail}/calendar/events/${staffEventId}`)
-      .delete();
-
-    console.log(`✓ Cancelled calendar events - Shared: ${sharedEventId}, Staff: ${staffEventId}`);
+    console.log(`✓ Cancelled calendar event in shared mailbox: ${sharedEventId}`);
+    console.log(`✓ Meeting invitation cancelled automatically for staff member ${staffEmail}`);
   } catch (error) {
     console.error('Error cancelling calendar booking:', error);
     throw error;
@@ -273,9 +262,28 @@ export async function isTimeSlotAvailable(
   try {
     const events = await getCalendarEvents(mailboxEmail, startTime, endTime);
 
-    // Check if there are any conflicting events (not marked as free)
+    // Check for actual time conflicts
+    // An event conflicts only if it truly overlaps with the requested slot
     const hasConflict = events.some((event) => {
-      return event.showAs !== 'free';
+      // Skip "Available" pattern events - they don't represent bookings
+      if (event.subject?.includes('Available')) {
+        return false;
+      }
+
+      // Skip free events
+      if (event.showAs === 'free') {
+        return false;
+      }
+
+      const eventStart = parseISO(event.start.dateTime);
+      const eventEnd = parseISO(event.end.dateTime);
+
+      // Check for actual overlap:
+      // Events overlap if: event starts before slot ends AND event ends after slot starts
+      // But we need to be careful with exact boundary times
+      const overlaps = eventStart < endTime && eventEnd > startTime;
+
+      return overlaps;
     });
 
     return !hasConflict;

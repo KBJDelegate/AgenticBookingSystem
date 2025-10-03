@@ -75,51 +75,42 @@ export async function getAvailableSlots(
 
       console.log(`[Processing] ${event.subject} on ${format(eventStart, 'yyyy-MM-dd HH:mm')}`);
 
-      // Check if this specific slot is still available (not booked)
-      const hasBooking = await checkForExistingBooking(
-        sharedMailboxEmail,
-        eventStart,
-        eventEnd
-      );
+      // If the available slot is longer than the service duration,
+      // we can offer multiple booking times within it
+      const slotDuration = Math.round((eventEnd.getTime() - eventStart.getTime()) / 60000);
 
-      console.log(`  - Has booking: ${hasBooking}`);
+      if (slotDuration >= serviceDuration) {
+        // Generate booking slots within this availability window
+        const bookingSlots = generateBookingSlotsWithinWindow(
+          eventStart,
+          eventEnd,
+          serviceDuration
+        );
 
-      if (!hasBooking) {
-        // If the available slot is longer than the service duration,
-        // we can offer multiple booking times within it
-        const slotDuration = Math.round((eventEnd.getTime() - eventStart.getTime()) / 60000);
+        console.log(`  - Generated ${bookingSlots.length} potential slots, checking each individually...`);
 
-        if (slotDuration >= serviceDuration) {
-          // Generate booking slots within this availability window
-          const bookingSlots = generateBookingSlotsWithinWindow(
-            eventStart,
-            eventEnd,
-            serviceDuration
+        // Check availability for each individual slot
+        for (const slot of bookingSlots) {
+          const sharedAvailable = await isTimeSlotAvailable(
+            sharedMailboxEmail,
+            slot.start,
+            slot.end
           );
 
-          console.log(`  - Generated ${bookingSlots.length} potential slots, checking each individually...`);
+          const staffAvailable = await isTimeSlotAvailable(
+            staffEmail,
+            slot.start,
+            slot.end
+          );
 
-          // Check availability for each individual slot
-          for (const slot of bookingSlots) {
-            const sharedAvailable = await isTimeSlotAvailable(
-              sharedMailboxEmail,
-              slot.start,
-              slot.end
-            );
+          console.log(`    - Slot ${format(slot.start, 'HH:mm')}-${format(slot.end, 'HH:mm')}: shared=${sharedAvailable}, staff=${staffAvailable}`);
 
-            const staffAvailable = await isTimeSlotAvailable(
-              staffEmail,
-              slot.start,
-              slot.end
-            );
-
-            if (sharedAvailable && staffAvailable) {
-              availableSlots.push({
-                ...slot,
-                isRecurring: event.type === 'occurrence' || event.type === 'seriesMaster',
-                recurringId: event.id
-              });
-            }
+          if (sharedAvailable && staffAvailable) {
+            availableSlots.push({
+              ...slot,
+              isRecurring: event.type === 'occurrence' || event.type === 'seriesMaster',
+              recurringId: event.id
+            });
           }
         }
       }
@@ -174,35 +165,6 @@ function generateBookingSlotsWithinWindow(
   }
 
   return slots;
-}
-
-/**
- * Check if there's already a booking in the shared calendar for a specific time
- */
-async function checkForExistingBooking(
-  sharedMailboxEmail: string,
-  startTime: Date,
-  endTime: Date
-): Promise<boolean> {
-  try {
-    const events = await getCalendarEvents(
-      sharedMailboxEmail,
-      startTime,
-      endTime,
-      false
-    );
-
-    // Look for any busy events that aren't the availability markers
-    const hasBooking = events.some(event =>
-      event.showAs === 'busy' &&
-      !event.subject?.includes('Available')
-    );
-
-    return hasBooking;
-  } catch (error) {
-    console.error('Error checking for existing booking:', error);
-    return true; // Assume booked if we can't check
-  }
 }
 
 /**
